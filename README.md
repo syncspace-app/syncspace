@@ -3,7 +3,9 @@
 Offline-first, real-time collaborative document workspace.
 
 Read the [project brief](docs/project-brief.md) before contributing. It is the
-source of truth for scope, architecture, and product decisions.
+source of truth for scope, architecture, and product decisions. The
+[backend architecture](docs/backend-architecture.md) document explains how the
+API applies it.
 
 ## Stack
 
@@ -21,8 +23,8 @@ source of truth for scope, architecture, and product decisions.
 - Node.js 20+ (24 LTS recommended)
 - Corepack (bundled with Node)
 - Git
-- A [Neon](https://neon.tech) account with a personal dev branch (database setup
-  is added in the next phase)
+- A [Neon](https://neon.tech) account with a personal dev branch (required by
+  environment validation before the API starts)
 
 ## First-time setup
 
@@ -40,6 +42,10 @@ cp .env.example .env
 # 4. Start web + api in watch mode
 yarn dev
 ```
+
+The API validates its environment at startup. `DATABASE_URL`, `DIRECT_URL`, and
+`BETTER_AUTH_SECRET` are required; missing or invalid values stop startup with a
+list of problems. Generate the secret with `openssl rand -base64 32`.
 
 - Web: http://localhost:3000
 - API health: http://localhost:4000/health
@@ -67,6 +73,13 @@ Husky is installed by the `prepare` script on `yarn install`.
 - **pre-push**: runs `yarn typecheck`.
 
 Never bypass hooks with `--no-verify` unless you are diagnosing a hook problem.
+
+## Logging
+
+API logs are written to stdout/stderr (Render captures both). Development uses
+readable coloured text; production uses JSON. Every response includes an
+`x-request-id` header for correlation. Inject `AppLogger` instead of using
+`console.log`; never log passwords, tokens, cookies or request bodies.
 
 ## CI
 
