@@ -53,29 +53,29 @@ Distinguish **cached locally** from **available offline**. Never promise offline
 
 **F. Sync status** (key differentiator). Explicit states:
 
-| State | Meaning |
-|---|---|
-| Saved | Latest local changes confirmed persisted on the server |
-| Saving locally | Changes being written to local storage |
-| Offline | Server unreachable; local editing available |
-| Connecting | Attempting to reconnect |
-| Syncing | Pending changes being synchronized |
-| Locally saved | Stored locally, not yet confirmed by server |
-| Sync error | Sync failed, needs retry |
-| Recovery pending | Local or server state needs reconciliation |
+| State            | Meaning                                                |
+| ---------------- | ------------------------------------------------------ |
+| Saved            | Latest local changes confirmed persisted on the server |
+| Saving locally   | Changes being written to local storage                 |
+| Offline          | Server unreachable; local editing available            |
+| Connecting       | Attempting to reconnect                                |
+| Syncing          | Pending changes being synchronized                     |
+| Locally saved    | Stored locally, not yet confirmed by server            |
+| Sync error       | Sync failed, needs retry                               |
+| Recovery pending | Local or server state needs reconciliation             |
 
 The UI must never show "Saved" just because the WebSocket is connected. Status must not rely on color alone.
 
 **G. Sharing and permissions:**
 
-| Operation | Owner | Editor | Viewer |
-|---|:-:|:-:|:-:|
-| View | ✅ | ✅ | ✅ |
-| Edit | ✅ | ✅ | ❌ |
-| Share | ✅ | ❌ | ❌ |
-| Change permissions | ✅ | ❌ | ❌ |
-| Remove members | ✅ | ❌ | ❌ |
-| Delete document | ✅ | ❌ | ❌ |
+| Operation          | Owner | Editor | Viewer |
+| ------------------ | :---: | :----: | :----: |
+| View               |  ✅   |   ✅   |   ✅   |
+| Edit               |  ✅   |   ✅   |   ❌   |
+| Share              |  ✅   |   ❌   |   ❌   |
+| Change permissions |  ✅   |   ❌   |   ❌   |
+| Remove members     |  ✅   |   ❌   |   ❌   |
+| Delete document    |  ✅   |   ❌   |   ❌   |
 
 The backend enforces permissions. Hiding UI controls is not authorization.
 
@@ -92,14 +92,17 @@ AI summaries/assistant/RAG/semantic search, comments and mentions, multiple work
 ## 4. Tech stack (final)
 
 ### Frontend (`apps/web`)
+
 Next.js (App Router), React, TypeScript, Tailwind CSS, shadcn/ui, Lucide React, Tiptap, Yjs, y-indexeddb, Zustand (UI state), TanStack Query (server state), Zod (shared contracts).
 Keep client components limited to genuinely interactive parts (editor, collaboration UI).
 
 ### Backend (`apps/api`)
+
 NestJS 12 (ESM-only; `module` and `moduleResolution` are `nodenext`; relative imports need `.js` extensions), TypeScript, Prisma, Better Auth, Hocuspocus, Yjs, Swagger/OpenAPI, Zod / class-validator (with clear boundaries).
 NestJS owns APIs, authorization, document operations and business logic. Hocuspocus owns real-time Yjs sync. **Both use the same permission rules** (one shared permissions service).
 
 ### Database
+
 Neon PostgreSQL (managed, Prisma-compatible, scales to zero). **No Docker and no local Postgres**: development, CI and production all use Neon.
 
 - **Production** uses the Neon `main` branch. Local development never points at it.
@@ -111,17 +114,21 @@ Neon PostgreSQL (managed, Prisma-compatible, scales to zero). **No Docker and no
 - Migrations are committed to Git. Do not rely on the free tier for backups. Check current free-tier limits (storage, compute hours, branches).
 
 ### Authentication
+
 Self-hosted Better Auth, running inside `apps/api` only. Next.js uses only the Better Auth client. Do **not** build a second session system. Verify the current NestJS integration pattern early (Nest's body parser must not consume the auth route; check for an official or community adapter). This is not Neon-managed auth.
 OAuth is a later enhancement.
 
 ### Real-time
+
 Yjs (CRDT), Hocuspocus (WebSocket server), Tiptap collaboration extensions, Yjs Awareness (presence), y-indexeddb (local), PostgreSQL via Prisma (server).
 No custom CRDT. No Supabase Realtime for editor sync. Never persist cursor/presence as document history.
 
 ### Testing
+
 Vitest (NestJS and frontend; API e2e via supertest, React Testing Library for UI), Playwright (e2e), WebSocket integration tests, GitHub Actions CI. Vitest does not emit decorator metadata, so add SWC decorator-metadata config once API services use constructor injection.
 
 ### Tooling and deployment
+
 Yarn, Turborepo, GitHub, Vercel (web), Render (api + Hocuspocus), Neon (database). Linting: oxlint (type-aware) for `apps/api`, ESLint for `apps/web`. No Docker: no local containers and no Dockerfile deployment.
 Free tiers sleep when idle: Render and Neon cold starts are independent. Acceptable for a portfolio demo; document it and warm both before demos. Never store durable data on Render's filesystem.
 
@@ -130,6 +137,7 @@ Free tiers sleep when idle: Render and Neon cold starts are independent. Accepta
 ## 5. Architecture decisions
 
 ### 5.1 Monorepo + modular monolith
+
 Yarn workspaces + Turborepo. One backend deployment exposing REST and WebSocket. **No microservices.** Modules have explicit boundaries. Extract a service (collaboration, AI, search, notifications) only when independent scaling or deployment is justified.
 
 ### 5.2 High-level view
@@ -147,9 +155,11 @@ Browser: Yjs doc ⇄ y-indexeddb (namespaced per user + document)
 Hocuspocus shares the NestJS HTTP server and handles WebSocket upgrades on `/collaboration`, while staying an independently structured module.
 
 ### 5.3 REST authorization
+
 Better Auth establishes the session → client sends authenticated requests → NestJS verifies the session → identifies the user → checks resource permissions.
 
 ### 5.4 WebSocket authorization (critical)
+
 1. Verify authentication before joining.
 2. Hocuspocus authenticates the connecting user.
 3. Check document membership and role in the database.
@@ -168,17 +178,21 @@ Never trust a client-supplied user ID or role. Derive identity from credentials,
 The most technically important part of the project.
 
 ### 6.1 Data flow
+
 Edit → Yjs update → (a) local IndexedDB, (b) WebSocket → Hocuspocus → Yjs doc → database write → Postgres commit → **persistence acknowledgement** → client status updated.
 
 This is conceptual. The implementation must explicitly establish how the client knows a given update reached durable server persistence.
 
 ### 6.2 Local persistence
+
 y-indexeddb, namespaced by account and document (e.g. `syncspace:{userId}:{documentId}`). Preserve edits across refresh, keep pending edits offline, avoid cross-account leakage, never delete pending local updates before they are safely synced. Clear a user's local databases on logout.
 
 ### 6.3 Server persistence
+
 Hocuspocus persistence hooks + Prisma. Store Yjs updates as binary (BYTEA), never JSON. Handle duplicate/replayed updates safely. Use transactions where appropriate. Document metadata is stored separately. Restore Yjs documents after restart. Use incremental updates with periodic snapshots/compaction; never write a full snapshot on every keystroke.
 
 ### 6.4 Save acknowledgement semantics
+
 Do **not** mark "server-saved" because the WebSocket is connected, an update was sent, an editor event completed, or an IndexedDB write succeeded.
 
 Lifecycle: edit → Yjs update → local persist → transmit → server applies → durable DB commit → server acknowledges → client marks server-saved.
@@ -186,9 +200,11 @@ Lifecycle: edit → Yjs update → local persist → transmit → server applies
 Hocuspocus persistence hooks may be debounced, so a normal sync event does not prove a Postgres commit. **Design the acknowledgement contract before building the final save indicator.** (Hocuspocus stateless messages are a candidate transport; verify against current docs.)
 
 ### 6.5 Reconnection
+
 Detect connectivity → re-establish WebSocket → re-authenticate if needed → sync remote state → exchange pending local updates → let Yjs reconcile → persist the result → confirm durable persistence → update the UI. Never blindly overwrite remote state with local state.
 
 ### 6.6 Failure scenarios to test (required, not polish)
+
 - Refresh while offline
 - Close and reopen browser while offline
 - Backend restart during editing
@@ -209,9 +225,11 @@ Detect connectivity → re-establish WebSocket → re-authenticate if needed →
 Use UUID ids, foreign keys, indexes, unique constraints, transactions. Credentials never reach the frontend; Neon is accessed only through the backend. Prisma migrations are version controlled. Database setup must be repeatable: a new developer creates a Neon dev branch, copies the connection strings into a local `.env`, and runs the Prisma migrations.
 
 ### Auth tables
+
 Owned by Better Auth (User, Session, Account, Verification). Use its schema generation and migration guidance; do not recreate them by hand.
 
 ### Application tables (initial; refine during implementation)
+
 - **UserProfile:** id, userId, displayName, avatarUrl, bio, preferences, createdAt, updatedAt
 - **Document:** id, title, ownerId, createdAt, updatedAt, deletedAt (optional soft delete)
 - **DocumentMember:** id, documentId, userId, role, invitedAt, joinedAt, createdAt, updatedAt. Unique (documentId, userId)
@@ -228,6 +246,7 @@ Owned by Better Auth (User, Session, Account, Verification). Use its schema gene
 **Principle: create folders only when the first file needs a home. No empty abstractions.**
 
 ### Package names
+
 `@syncspace/web` (apps/web) and `@syncspace/api` (apps/api) are set and must not be renamed. `@syncspace/contracts` (packages/contracts) is planned: added when the first shared schema is needed.
 
 ### Target structure (grows over time)
@@ -275,9 +294,11 @@ syncspace/
 Add `packages/config`, `hooks/`, `stores/`, `services/`, `versions/` or a separate `members/` module only when real code needs them. Keep shadcn components inside `apps/web`.
 
 ### Shared contracts build
+
 `@syncspace/contracts` is planned: added when the first shared schema is needed. It will be built to `dist` with tsup (CJS + ESM + types) so both the ESM web and api apps can consume it without importing raw TS from another package.
 
 ### Design rules
+
 - Editor components are client-only (dynamic import, SSR off); other pages stay server components.
 - Viewer read-only enforcement happens server-side in Hocuspocus authentication.
 - Env vars validated with zod at API startup; missing secrets fail fast.
@@ -303,6 +324,7 @@ A polished productivity SaaS feel. References: Outline (organization), Notion (e
 ## 10. Requirements
 
 ### Functional
+
 - **Auth:** FR-01 register · FR-02 sign in/out · FR-03 sessions persist · FR-04 protected routes · FR-05 profile
 - **Documents:** FR-06 create · FR-07 list accessible · FR-08 rename · FR-09 delete · FR-10 search · FR-11 load persisted state
 - **Collaboration:** FR-12 multi-user editing · FR-13 real-time propagation · FR-14 presence and cursors · FR-15 concurrent edits reconcile
@@ -311,6 +333,7 @@ A polished productivity SaaS feel. References: Outline (organization), Notion (e
 - **Persistence:** FR-27 changes persist to PostgreSQL · FR-28 recover after restart · FR-29 duplicates handled safely · FR-30 local and remote reconcile after disconnection
 
 ### Non-functional
+
 - **Performance:** fast dashboard, responsive typing, near-real-time collaboration, no full-document writes per change, avoid needless re-renders and polling.
 - **Reliability:** local changes survive refresh, server data survives restart, interruptions don't destroy work, reconnection is safe and idempotent, failed writes are observable and recoverable.
 - **Security:** no secrets in frontend bundles, validate all input, backend authorization, secure WebSocket auth, no unauthorized access, no cross-account cache leakage, revalidate permissions for connected collaborators, rate-limit sensitive endpoints.
@@ -370,6 +393,7 @@ EMAIL_FROM=
 Work is ticket-based: one branch per ticket, merged via pull request, `main` protected, CI required (lint, typecheck, build, test).
 
 ### Phases
+
 1. **Local-first:** monorepo skeleton → Neon dev branches + Prisma → Better Auth spike in Nest → CI. Build features against localhost, with each developer's own Neon dev branch as the database.
 2. **Deploy the skeleton early** (once auth works): Vercel + Render + Neon with login and `/health`. Prove cross-domain cookies and a WebSocket connection to Render **early**, not on Day 13.
 3. **Build features with auto-deploy:** every merge to `main` redeploys; Vercel previews for PRs.
@@ -378,24 +402,27 @@ Work is ticket-based: one branch per ticket, merged via pull request, `main` pro
 ### 14-day roadmap (aggressive; reduce scope rather than reliability if time is short)
 
 **Week 1: foundation and collaboration**
-- **Day 1:** monorepo, Next + Nest, Prisma + Postgres, Better Auth proof of concept, contracts, `.env.example`, architecture notes. *Accept:* both apps run, DB connects, migration works, auth POC works, both devs can run it.
-- **Day 2:** auth pages, logout, session persistence, protected routes, Nest auth integration, profile and initial document/member schema, Swagger. *Accept:* register/login works, session survives refresh, protected endpoints reject anonymous requests.
-- **Day 3:** dashboard, document CRUD APIs, per-user access, empty/loading states, search. *Accept:* create/view/rename/delete works; users can't see others' private documents.
-- **Day 4:** Tiptap editor, toolbar, formatting, title editing, temporary basic persistence checkpoint (to be replaced by Yjs state). *Accept:* rich text works and reloads; responsive layout.
-- **Day 5:** Yjs, Hocuspocus, Tiptap collaboration, rooms, WebSocket auth, initial sync, basic persistence hooks. *Accept:* two sessions share edits; unauthorized users cannot join.
-- **Day 6:** awareness, avatars, cursors, selections, connection indicators, reconnect handling. *Accept:* two users collaborate, see each other, concurrent edits reconcile.
-- **Day 7:** integration checkpoint. *Accept:* two authenticated users collaborate on a shared document. No advanced features until this works.
+
+- **Day 1:** monorepo, Next + Nest, Prisma + Postgres, Better Auth proof of concept, contracts, `.env.example`, architecture notes. _Accept:_ both apps run, DB connects, migration works, auth POC works, both devs can run it.
+- **Day 2:** auth pages, logout, session persistence, protected routes, Nest auth integration, profile and initial document/member schema, Swagger. _Accept:_ register/login works, session survives refresh, protected endpoints reject anonymous requests.
+- **Day 3:** dashboard, document CRUD APIs, per-user access, empty/loading states, search. _Accept:_ create/view/rename/delete works; users can't see others' private documents.
+- **Day 4:** Tiptap editor, toolbar, formatting, title editing, temporary basic persistence checkpoint (to be replaced by Yjs state). _Accept:_ rich text works and reloads; responsive layout.
+- **Day 5:** Yjs, Hocuspocus, Tiptap collaboration, rooms, WebSocket auth, initial sync, basic persistence hooks. _Accept:_ two sessions share edits; unauthorized users cannot join.
+- **Day 6:** awareness, avatars, cursors, selections, connection indicators, reconnect handling. _Accept:_ two users collaborate, see each other, concurrent edits reconcile.
+- **Day 7:** integration checkpoint. _Accept:_ two authenticated users collaborate on a shared document. No advanced features until this works.
 
 **Week 2: offline, reliability, sharing, deployment**
-- **Day 8:** y-indexeddb, per-account namespacing. *Accept:* cached document stays editable offline through a refresh.
-- **Day 9:** network detection, reconnect, sync status UI, session expiry, failed sync. *Accept:* offline edit syncs after reconnect; locally saved vs server-persisted is visible.
-- **Day 10:** durable Postgres persistence, binary updates, duplicate handling, restart recovery, acknowledgement behavior, snapshots if time permits. *Accept:* state survives restart; never falsely reports server persistence.
-- **Day 11:** member APIs, invitations, roles, sharing UI, revocation, REST and WebSocket enforcement. *Accept:* owner/editor/viewer behave consistently everywhere.
-- **Day 12:** reliability tests (auth, CRUD, authorization, concurrency, offline, restart, account switch), responsive checks, bug fixes. *Accept:* core workflows pass repeatable tests.
-- **Day 13:** production deploy, env vars, migrations, CORS/trusted origins, WebSocket and cookie verification, logging, README. *Accept:* deployed app works end to end with two accounts.
-- **Day 14:** full end-to-end verification, screenshots, demo script, architecture and limitations docs, tag the release. *Accept:* working, deployable, documented MVP.
+
+- **Day 8:** y-indexeddb, per-account namespacing. _Accept:_ cached document stays editable offline through a refresh.
+- **Day 9:** network detection, reconnect, sync status UI, session expiry, failed sync. _Accept:_ offline edit syncs after reconnect; locally saved vs server-persisted is visible.
+- **Day 10:** durable Postgres persistence, binary updates, duplicate handling, restart recovery, acknowledgement behavior, snapshots if time permits. _Accept:_ state survives restart; never falsely reports server persistence.
+- **Day 11:** member APIs, invitations, roles, sharing UI, revocation, REST and WebSocket enforcement. _Accept:_ owner/editor/viewer behave consistently everywhere.
+- **Day 12:** reliability tests (auth, CRUD, authorization, concurrency, offline, restart, account switch), responsive checks, bug fixes. _Accept:_ core workflows pass repeatable tests.
+- **Day 13:** production deploy, env vars, migrations, CORS/trusted origins, WebSocket and cookie verification, logging, README. _Accept:_ deployed app works end to end with two accounts.
+- **Day 14:** full end-to-end verification, screenshots, demo script, architecture and limitations docs, tag the release. _Accept:_ working, deployable, documented MVP.
 
 ### Developer split
+
 - **Developer 1 (frontend/UX):** Next.js, auth screens, dashboard, Tiptap UI, Yjs frontend, IndexedDB, presence UI, sync UI, sharing dialog, responsive layouts, frontend tests.
 - **Developer 2 (backend/infra):** NestJS architecture, Better Auth, Prisma/migrations, Neon, document APIs, permissions, Hocuspocus, Yjs persistence, WebSocket auth, recovery, backend tests, deployment config.
 - **Shared:** Day 1 architecture and contracts, Yjs lifecycle, auth handshake, offline/reconnect behavior, persistence acknowledgement, permission revocation, integration testing, final verification. Agree on contracts before building either side.
