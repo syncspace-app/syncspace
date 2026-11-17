@@ -23,6 +23,23 @@ describe('AppController (e2e)', () => {
       .expect({ status: 'ok' });
   });
 
+  it('adds an x-request-id response header', async () => {
+    const response = await request(app.getHttpServer()).get('/health');
+
+    expect(response.headers['x-request-id']).toMatch(/^[A-Za-z0-9._-]{1,64}$/);
+  });
+
+  it('returns a consistent error body for unknown routes', async () => {
+    const response = await request(app.getHttpServer()).get('/missing');
+
+    expect(response.status).toBe(404);
+    expect(response.body).toMatchObject({
+      statusCode: 404,
+      path: '/missing',
+    });
+    expect(response.body.requestId).toMatch(/^[A-Za-z0-9._-]{1,64}$/);
+  });
+
   afterEach(async () => {
     await app.close();
   });
