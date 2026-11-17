@@ -41,13 +41,13 @@ Target structure lives in brief §8. Folders are created only once a file needs 
 
 Run from the repo root; each maps to a turbo task.
 
-| Command          | Purpose                         |
-| ---------------- | ------------------------------- |
-| `yarn dev`       | Start `web` + `api` in dev mode |
-| `yarn build`     | Build all packages and apps     |
-| `yarn lint`      | Lint                            |
-| `yarn typecheck` | TypeScript check                |
-| `yarn test`      | Run tests                       |
+| Command | Purpose |
+|---|---|
+| `yarn dev` | Start `web` + `api` in dev mode |
+| `yarn build` | Build all packages and apps |
+| `yarn lint` | Lint |
+| `yarn typecheck` | TypeScript check |
+| `yarn test` | Run tests |
 
 ## Out of scope for now
 

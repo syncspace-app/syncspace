@@ -11,16 +11,9 @@
     "build": "turbo run build",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
-    "test": "turbo run test",
-    "test:e2e": "turbo run test:e2e",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "prepare": "husky"
+    "test": "turbo run test"
   },
   "devDependencies": {
-    "husky": "^9.1.7",
-    "lint-staged": "^16.0.0",
-    "prettier": "^3.6.2",
     "turbo": "^2.11.11"
   },
   "packageManager": "yarn@4.18.1",
