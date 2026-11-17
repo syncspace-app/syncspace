@@ -1,0 +1,23 @@
+{
+  "name": "syncspace",
+  "version": "0.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test"
+  },
+  "devDependencies": {
+    "turbo": "^2.11.11"
+  },
+  "packageManager": "yarn@4.18.1",
+  "engines": {
+    "node": ">=20"
+  }
+}
