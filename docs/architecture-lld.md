@@ -162,23 +162,31 @@ classDiagram
 
 ### 2.3 Permission model
 
-| Operation | Owner | Editor | Viewer |
-|---|:-:|:-:|:-:|
-| View | ✅ | ✅ | ✅ |
-| Edit | ✅ | ✅ | ❌ |
-| Rename | ✅ | ❌ | ❌ |
-| Share (create invite links) | ✅ | ❌ | ❌ |
-| Change roles, remove members | ✅ | ❌ | ❌ |
-| Delete | ✅ | ❌ | ❌ |
+| Operation                    | Owner | Editor | Viewer |
+| ---------------------------- | :---: | :----: | :----: |
+| View                         |  ✅   |   ✅   |   ✅   |
+| Edit                         |  ✅   |   ✅   |   ❌   |
+| Rename                       |  ✅   |   ❌   |   ❌   |
+| Share (create invite links)  |  ✅   |   ❌   |   ❌   |
+| Change roles, remove members |  ✅   |   ❌   |   ❌   |
+| Delete                       |  ✅   |   ❌   |   ❌   |
 
 One pure function backs every check, so REST and WebSocket cannot disagree:
 
 ```ts
 type Role = "OWNER" | "EDITOR" | "VIEWER";
-type Action = "view" | "edit" | "rename" | "share" | "manage_members" | "delete";
+type Action =
+  "view" | "edit" | "rename" | "share" | "manage_members" | "delete";
 
 const ALLOWED: Record<Role, ReadonlySet<Action>> = {
-  OWNER: new Set(["view", "edit", "rename", "share", "manage_members", "delete"]),
+  OWNER: new Set([
+    "view",
+    "edit",
+    "rename",
+    "share",
+    "manage_members",
+    "delete",
+  ]),
   EDITOR: new Set(["view", "edit"]),
   VIEWER: new Set(["view"]),
 };
@@ -193,25 +201,25 @@ export const can = (role: Role | null, action: Action) =>
 
 All routes are under `/api`. Everything except `/api/auth/*` and `/api/health*` needs a valid session.
 
-| Method | Path | Min role | Purpose |
-|---|---|---|---|
-| `*` | `/api/auth/*` | public | Better Auth endpoints (do not recreate) |
-| GET | `/api/health` | public | Liveness: **no database call** (keeps Neon asleep, used to wake Render) |
-| GET | `/api/health/ready` | public | Readiness: includes a database check |
-| GET, PATCH | `/api/users/me` | session | Profile |
-| POST | `/api/documents` | session | Create (caller becomes owner) |
-| GET | `/api/documents?scope=owned\|shared&q=` | session | List accessible documents, search by title |
-| GET | `/api/documents/:id` | viewer | Metadata and caller's role |
-| PATCH | `/api/documents/:id` | owner | Rename |
-| DELETE | `/api/documents/:id` | owner | Soft delete, closes live sockets |
-| GET | `/api/documents/:id/members` | viewer | Members (names only for non-owners) |
-| PATCH | `/api/documents/:id/members/:memberId` | owner | Change role |
-| DELETE | `/api/documents/:id/members/:memberId` | owner | Remove, closes that user's sockets |
-| POST | `/api/documents/:id/invitations` | owner | Create invite link, returns the raw token **once** |
-| GET | `/api/documents/:id/invitations` | owner | List links (never tokens) |
-| DELETE | `/api/documents/:id/invitations/:invId` | owner | Revoke |
-| POST | `/api/invitations/accept` | session | `{ token }`, returns `{ documentId }` |
-| POST | `/api/collaboration/tickets` | viewer | `{ documentId }`, returns a 60-second ticket |
+| Method     | Path                                    | Min role | Purpose                                                                 |
+| ---------- | --------------------------------------- | -------- | ----------------------------------------------------------------------- |
+| `*`        | `/api/auth/*`                           | public   | Better Auth endpoints (do not recreate)                                 |
+| GET        | `/api/health`                           | public   | Liveness: **no database call** (keeps Neon asleep, used to wake Render) |
+| GET        | `/api/health/ready`                     | public   | Readiness: includes a database check                                    |
+| GET, PATCH | `/api/users/me`                         | session  | Profile                                                                 |
+| POST       | `/api/documents`                        | session  | Create (caller becomes owner)                                           |
+| GET        | `/api/documents?scope=owned\|shared&q=` | session  | List accessible documents, search by title                              |
+| GET        | `/api/documents/:id`                    | viewer   | Metadata and caller's role                                              |
+| PATCH      | `/api/documents/:id`                    | owner    | Rename                                                                  |
+| DELETE     | `/api/documents/:id`                    | owner    | Soft delete, closes live sockets                                        |
+| GET        | `/api/documents/:id/members`            | viewer   | Members (names only for non-owners)                                     |
+| PATCH      | `/api/documents/:id/members/:memberId`  | owner    | Change role                                                             |
+| DELETE     | `/api/documents/:id/members/:memberId`  | owner    | Remove, closes that user's sockets                                      |
+| POST       | `/api/documents/:id/invitations`        | owner    | Create invite link, returns the raw token **once**                      |
+| GET        | `/api/documents/:id/invitations`        | owner    | List links (never tokens)                                               |
+| DELETE     | `/api/documents/:id/invitations/:invId` | owner    | Revoke                                                                  |
+| POST       | `/api/invitations/accept`               | session  | `{ token }`, returns `{ documentId }`                                   |
+| POST       | `/api/collaboration/tickets`            | viewer   | `{ documentId }`, returns a 60-second ticket                            |
 
 **Rules**
 
@@ -219,7 +227,11 @@ All routes are under `/api`. Everything except `/api/auth/*` and `/api/health*` 
 - One error shape everywhere, with a stable `code` that the UI translates:
 
 ```json
-{ "statusCode": 403, "code": "FORBIDDEN", "message": "You do not have access to this document." }
+{
+  "statusCode": 403,
+  "code": "FORBIDDEN",
+  "message": "You do not have access to this document."
+}
 ```
 
 - Validate every body with zod (or class-validator, but not both on one route). Reject unknown fields.
@@ -415,16 +427,16 @@ sequenceDiagram
 
 ⚠ Verify every hook name and option against the pinned Hocuspocus version.
 
-| Hook | Responsibility |
-|---|---|
-| `onAuthenticate` | Verify the ticket, read the role, set read-only for viewers, return `{ userId, role }` as context |
-| `onLoadDocument` | Build the `Y.Doc`, set `lastCommittedSV` and `dirtySinceCommit = false` |
-| `onChange` / document `update` | Set `dirtySinceCommit = true` (this also fires for delete-only edits) |
-| `beforeHandleMessage` (if available) | Defense in depth: re-check the role from a short cache (about 30 s) |
-| `onStoreDocument` (debounced, about 2 s with a 10 s max) | Call `PersistenceQueue.commit(documentId)` |
-| `onStateless` | Route `flush` messages to `FlushHandler` |
-| `onDisconnect` | Remove from the registry; Hocuspocus flushes when the last client leaves |
-| Shutdown (`SIGTERM`) | Stop accepting connections, flush every pending store, then exit (Render restarts on every deploy) |
+| Hook                                                     | Responsibility                                                                                     |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `onAuthenticate`                                         | Verify the ticket, read the role, set read-only for viewers, return `{ userId, role }` as context  |
+| `onLoadDocument`                                         | Build the `Y.Doc`, set `lastCommittedSV` and `dirtySinceCommit = false`                            |
+| `onChange` / document `update`                           | Set `dirtySinceCommit = true` (this also fires for delete-only edits)                              |
+| `beforeHandleMessage` (if available)                     | Defense in depth: re-check the role from a short cache (about 30 s)                                |
+| `onStoreDocument` (debounced, about 2 s with a 10 s max) | Call `PersistenceQueue.commit(documentId)`                                                         |
+| `onStateless`                                            | Route `flush` messages to `FlushHandler`                                                           |
+| `onDisconnect`                                           | Remove from the registry; Hocuspocus flushes when the last client leaves                           |
+| Shutdown (`SIGTERM`)                                     | Stop accepting connections, flush every pending store, then exit (Render restarts on every deploy) |
 
 ### 5.3 Presence identity
 
@@ -465,12 +477,12 @@ sequenceDiagram
 
 ### 5.5 Close codes and reconnect
 
-| Code | Meaning | Client action |
-|---|---|---|
+| Code | Meaning                            | Client action                                                          |
+| ---- | ---------------------------------- | ---------------------------------------------------------------------- |
 | 4401 | Unauthenticated or session expired | Refresh the session, then reconnect; if it fails, Sync error (sign in) |
-| 4403 | Access revoked or forbidden | Do not retry; Recovery pending, local copy purged |
-| 4404 | Document missing or deleted | Do not retry; show not found |
-| 1011 | Server error | Retry with backoff |
+| 4403 | Access revoked or forbidden        | Do not retry; Recovery pending, local copy purged                      |
+| 4404 | Document missing or deleted        | Do not retry; show not found                                           |
+| 1011 | Server error                       | Retry with backoff                                                     |
 
 ⚠ Verify that Hocuspocus allows custom close codes. If not, close the socket and let the next authentication fail with the right reason.
 
@@ -522,8 +534,8 @@ The editor's store hook is debounced, so a delivered message proves nothing abou
 type Flush = {
   type: "flush";
   nonce: string;
-  epoch: number;        // client's local edit counter at send time
-  stateVector: string;  // base64, the client's Y state vector
+  epoch: number; // client's local edit counter at send time
+  stateVector: string; // base64, the client's Y state vector
 };
 type Flushed = { type: "flushed"; nonce: string };
 type FlushFailed = {
@@ -650,14 +662,14 @@ An in-memory counter cannot tell, after a refresh, whether unsynced work exists.
 
 One pure function turns the inputs into one of eight states. It is table-testable, and it cannot reach an impossible state.
 
-| Input | Meaning |
-|---|---|
-| `provider` | `connected`, `connecting` or `disconnected` (the browser being offline counts as disconnected) |
-| `synced` | The initial server sync finished on this connection |
-| `pending` | The pending marker is set |
-| `flushError` | `flush-failed`, or a reply timeout while connected |
-| `authError` | Closed with 4401 |
-| `needsRecovery` | Closed with 4403, or a role change conflicts with pending edits |
+| Input           | Meaning                                                                                        |
+| --------------- | ---------------------------------------------------------------------------------------------- |
+| `provider`      | `connected`, `connecting` or `disconnected` (the browser being offline counts as disconnected) |
+| `synced`        | The initial server sync finished on this connection                                            |
+| `pending`       | The pending marker is set                                                                      |
+| `flushError`    | `flush-failed`, or a reply timeout while connected                                             |
+| `authError`     | Closed with 4401                                                                               |
+| `needsRecovery` | Closed with 4403, or a role change conflicts with pending edits                                |
 
 ```mermaid
 flowchart TD
@@ -735,15 +747,15 @@ sequenceDiagram
 
 ### 7.6 State ownership
 
-| Kind of state | Owner |
-|---|---|
-| Server data (documents, members, profile) | TanStack Query |
-| Document content | Yjs |
-| Presence | Yjs awareness |
-| Sync status | `deriveStatus` through `useDocumentSync` |
-| UI preferences (sidebar, dialogs) | Zustand |
-| Theme | `next-themes` |
-| Navigation and search text | URL |
+| Kind of state                             | Owner                                    |
+| ----------------------------------------- | ---------------------------------------- |
+| Server data (documents, members, profile) | TanStack Query                           |
+| Document content                          | Yjs                                      |
+| Presence                                  | Yjs awareness                            |
+| Sync status                               | `deriveStatus` through `useDocumentSync` |
+| UI preferences (sidebar, dialogs)         | Zustand                                  |
+| Theme                                     | `next-themes`                            |
+| Navigation and search text                | URL                                      |
 
 One fact, one owner. Never copy document text into React state.
 
@@ -796,18 +808,18 @@ sequenceDiagram
 
 ## 9. Security checklist
 
-| Area | Rule |
-|---|---|
-| Identity | Session cookie (`HttpOnly`, `Secure`, `SameSite=Lax`) plus an `Origin` check on mutating requests (⚠ Verify Better Auth defaults) |
-| Authorization | `PermissionsService` on every REST handler and every WebSocket connect; role always from the database |
-| WebSocket | Single-use 60-second ticket in the auth message (not the URL), `Origin` check on upgrade, read-only viewers, re-check on a short cache |
-| Rich-text safety | Schema allowlist, no raw HTML paste, restricted link protocols, security headers and a CSP (⚠ Verify Tiptap's defaults) |
-| Public-demo limits (starting values) | Max update message about 1 MB, document state about 5 MB, 50 documents per user, 20 members per document, 10 active invite links per document |
-| Rate limits (starting values) | Sign-in and sign-up about 10 per minute per IP, tickets about 30 per minute per user, invite accept about 10 per minute per IP |
-| Secrets | Only in platform settings and a local `.env`; never `NEXT_PUBLIC_*` except harmless URLs; separate dev and production values; the repo is public |
-| Logging | Log `userId`, `documentId` and connection id; never tokens, tickets, cookies or document content |
-| Demo accounts | Hold no real data; profile and password changes disabled; periodic reset |
-| Local data | Namespaced per account, purged on logout (with the unsynced-work dialog); not encrypted, and documented as such |
+| Area                                 | Rule                                                                                                                                             |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Identity                             | Session cookie (`HttpOnly`, `Secure`, `SameSite=Lax`) plus an `Origin` check on mutating requests (⚠ Verify Better Auth defaults)                |
+| Authorization                        | `PermissionsService` on every REST handler and every WebSocket connect; role always from the database                                            |
+| WebSocket                            | Single-use 60-second ticket in the auth message (not the URL), `Origin` check on upgrade, read-only viewers, re-check on a short cache           |
+| Rich-text safety                     | Schema allowlist, no raw HTML paste, restricted link protocols, security headers and a CSP (⚠ Verify Tiptap's defaults)                          |
+| Public-demo limits (starting values) | Max update message about 1 MB, document state about 5 MB, 50 documents per user, 20 members per document, 10 active invite links per document    |
+| Rate limits (starting values)        | Sign-in and sign-up about 10 per minute per IP, tickets about 30 per minute per user, invite accept about 10 per minute per IP                   |
+| Secrets                              | Only in platform settings and a local `.env`; never `NEXT_PUBLIC_*` except harmless URLs; separate dev and production values; the repo is public |
+| Logging                              | Log `userId`, `documentId` and connection id; never tokens, tickets, cookies or document content                                                 |
+| Demo accounts                        | Hold no real data; profile and password changes disabled; periodic reset                                                                         |
+| Local data                           | Namespaced per account, purged on logout (with the unsynced-work dialog); not encrypted, and documented as such                                  |
 
 ---
 
@@ -815,23 +827,23 @@ sequenceDiagram
 
 Each failure scenario maps to a test that must exist before the demo.
 
-| # | Scenario | Expected behavior | Test |
-|---|---|---|---|
-| 1 | Refresh while offline | Local edits intact once the page loads (full cold start needs the future app-shell cache) | Playwright, `setOffline` |
-| 2 | Offline edit, reconnect | Edits merge, then Saved after the flush confirms | Playwright |
-| 3 | Backend restarts mid-edit | Clients reconnect, resend, converge, and return to Saved | Integration |
-| 4 | Database unavailable | `flush-failed`; Sync error with Retry; recovers when the database returns | Integration (inject a Prisma failure) |
-| 5 | Socket drops while typing | Offline or Locally saved, auto-reconnect, converge | Integration |
-| 6 | Session expires | Sync error (sign in); local edits kept | Integration + Playwright |
-| 7 | Permission revoked while connected | Connection closed, writes rejected, local copy purged | Integration (two providers) |
-| 8 | Two users edit one paragraph | Both edits kept; documents identical | Integration (two providers) |
-| 9 | Long offline period | Everything delivered on reconnect | Integration |
-| 10 | Sign out, another account signs in | The second account cannot see the first's data | Playwright |
-| 11 | Duplicate updates | No corruption; documents identical | Unit |
-| 12 | Restart before the commit finishes | Client never shows Saved without a matching flush; resends after reconnect | Integration |
-| 13 | Delete-only edit then flush | Not falsely Saved before the commit | Integration |
-| 14 | Same document open in two tabs | Both converge; no duplicate-write problems | Playwright |
-| 15 | Invite link: expired, revoked, exhausted, reused | One generic error; no access gained | Integration |
+| #   | Scenario                                         | Expected behavior                                                                         | Test                                  |
+| --- | ------------------------------------------------ | ----------------------------------------------------------------------------------------- | ------------------------------------- |
+| 1   | Refresh while offline                            | Local edits intact once the page loads (full cold start needs the future app-shell cache) | Playwright, `setOffline`              |
+| 2   | Offline edit, reconnect                          | Edits merge, then Saved after the flush confirms                                          | Playwright                            |
+| 3   | Backend restarts mid-edit                        | Clients reconnect, resend, converge, and return to Saved                                  | Integration                           |
+| 4   | Database unavailable                             | `flush-failed`; Sync error with Retry; recovers when the database returns                 | Integration (inject a Prisma failure) |
+| 5   | Socket drops while typing                        | Offline or Locally saved, auto-reconnect, converge                                        | Integration                           |
+| 6   | Session expires                                  | Sync error (sign in); local edits kept                                                    | Integration + Playwright              |
+| 7   | Permission revoked while connected               | Connection closed, writes rejected, local copy purged                                     | Integration (two providers)           |
+| 8   | Two users edit one paragraph                     | Both edits kept; documents identical                                                      | Integration (two providers)           |
+| 9   | Long offline period                              | Everything delivered on reconnect                                                         | Integration                           |
+| 10  | Sign out, another account signs in               | The second account cannot see the first's data                                            | Playwright                            |
+| 11  | Duplicate updates                                | No corruption; documents identical                                                        | Unit                                  |
+| 12  | Restart before the commit finishes               | Client never shows Saved without a matching flush; resends after reconnect                | Integration                           |
+| 13  | Delete-only edit then flush                      | Not falsely Saved before the commit                                                       | Integration                           |
+| 14  | Same document open in two tabs                   | Both converge; no duplicate-write problems                                                | Playwright                            |
+| 15  | Invite link: expired, revoked, exhausted, reused | One generic error; no access gained                                                       | Integration                           |
 
 ```mermaid
 flowchart TB
@@ -865,17 +877,17 @@ flowchart TB
 
 ### 11.1 Environment variables
 
-| Variable | Where | Public? | Notes |
-|---|---|:-:|---|
-| `DATABASE_URL` | api | No | Neon pooled connection string |
-| `DIRECT_URL` | api | No | Neon direct string, migrations only |
-| `BETTER_AUTH_SECRET` | api | No | Random; different per environment |
-| `BETTER_AUTH_URL` | api | No | **The Vercel app URL**, not Render's |
-| `WEB_ORIGIN` | api | No | Allowed `Origin` for REST and the WebSocket upgrade |
-| `COLLAB_TICKET_SECRET` | api | No | Signs WebSocket tickets |
-| `PORT` | api | No | Set by Render; default 4000 |
-| `API_URL` | web (server) | No | Render URL, used only by the rewrite |
-| `NEXT_PUBLIC_WS_URL` | web | Yes | Render's WebSocket URL (a URL, not a secret) |
+| Variable               | Where        | Public? | Notes                                               |
+| ---------------------- | ------------ | :-----: | --------------------------------------------------- |
+| `DATABASE_URL`         | api          |   No    | Neon pooled connection string                       |
+| `DIRECT_URL`           | api          |   No    | Neon direct string, migrations only                 |
+| `BETTER_AUTH_SECRET`   | api          |   No    | Random; different per environment                   |
+| `BETTER_AUTH_URL`      | api          |   No    | **The Vercel app URL**, not Render's                |
+| `WEB_ORIGIN`           | api          |   No    | Allowed `Origin` for REST and the WebSocket upgrade |
+| `COLLAB_TICKET_SECRET` | api          |   No    | Signs WebSocket tickets                             |
+| `PORT`                 | api          |   No    | Set by Render; default 4000                         |
+| `API_URL`              | web (server) |   No    | Render URL, used only by the rewrite                |
+| `NEXT_PUBLIC_WS_URL`   | web          |   Yes   | Render's WebSocket URL (a URL, not a secret)        |
 
 Validate all of them with zod when the API starts, so a missing secret fails fast.
 
@@ -908,16 +920,16 @@ async rewrites() {
 
 Do these before building features on top of them.
 
-| # | Spike | Day |
-|---|---|---|
-| 1 | Better Auth inside Nest and behind the Vercel rewrite: cookie set, session survives refresh in Chrome and Safari | 1 |
-| 2 | A cold Render through the rewrite: does the first request complete within Vercel's limit (⚠ Verify)? | 1 to 2 |
-| 3 | Hocuspocus on the Nest server, ticket authentication, custom close codes, read-only connections | 3 |
-| 4 | Message order on one connection, including a delete followed immediately by a flush | 3 |
-| 5 | A flush replies `flushed` only after the commit; killing the server before the commit never ends in Saved | 3 to 4 |
-| 6 | A clean document replies `flushed` without writing | 4 |
-| 7 | Two clients typing at once never produce a false Saved (compare full document states) | 4 |
-| 8 | `y-indexeddb`: observe updates for the pending marker; delete a database after closing the provider | 4 |
-| 9 | Delete-only edits set `dirtySinceCommit` and are committed | 4 |
+| #   | Spike                                                                                                            | Day    |
+| --- | ---------------------------------------------------------------------------------------------------------------- | ------ |
+| 1   | Better Auth inside Nest and behind the Vercel rewrite: cookie set, session survives refresh in Chrome and Safari | 1      |
+| 2   | A cold Render through the rewrite: does the first request complete within Vercel's limit (⚠ Verify)?             | 1 to 2 |
+| 3   | Hocuspocus on the Nest server, ticket authentication, custom close codes, read-only connections                  | 3      |
+| 4   | Message order on one connection, including a delete followed immediately by a flush                              | 3      |
+| 5   | A flush replies `flushed` only after the commit; killing the server before the commit never ends in Saved        | 3 to 4 |
+| 6   | A clean document replies `flushed` without writing                                                               | 4      |
+| 7   | Two clients typing at once never produce a false Saved (compare full document states)                            | 4      |
+| 8   | `y-indexeddb`: observe updates for the pending marker; delete a database after closing the provider              | 4      |
+| 9   | Delete-only edits set `dirtySinceCommit` and are committed                                                       | 4      |
 
 **Fallback if message ordering cannot be relied on:** have the client send the flush only after the server acknowledges its latest update (⚠ Verify that Hocuspocus exposes such an acknowledgement).
