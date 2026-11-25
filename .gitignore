@@ -16,3 +16,5 @@ dist
 !.yarn/versions
 
 *.tsbuildinfo
+
+docs/design/screens/superseded/
