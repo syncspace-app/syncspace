@@ -1,0 +1,129 @@
+/*
+  SyncSpace design tokens (light and dark).
+  Source of truth for colors, radius and fonts. See design-system.md.
+
+  How to use:
+  1. Run the shadcn init for the installed Next.js and Tailwind versions.
+  2. Copy the VALUES below into the variables that init generates in
+     apps/web/app/globals.css. Keep shadcn's own structure (it may use oklch
+     and an @theme inline block). Do not replace its mapping blindly.
+     ⚠ Verify the current shadcn + Tailwind setup before pasting.
+  3. Never use raw hex in components. Use the semantic tokens only.
+*/
+
+:root {
+  /* Surfaces */
+  --background: #f7f7fb;
+  --foreground: #1a1a24;
+  --card: #ffffff;
+  --card-foreground: #1a1a24;
+  --popover: #ffffff;
+  --popover-foreground: #1a1a24;
+
+  /* Brand */
+  --primary: #6254e8;
+  --primary-foreground: #ffffff;
+  --accent: #eeecfd;
+  --accent-foreground: #3b30b5;
+  --ring: #6254e8;
+
+  /* Neutral */
+  --secondary: #f0f0f5;
+  --secondary-foreground: #1a1a24;
+  --muted: #f0f0f5;
+  --muted-foreground: #6b6b7b;
+  --border: #e6e6ee;
+  --input: #e6e6ee;
+
+  /* Status */
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --success: #15803d;
+  --success-bg: #e7f6ec;
+  --warning: #b45309;
+  --warning-bg: #fef3c7;
+  --error-text: #b91c1c;
+  --error-bg: #fee2e2;
+
+  /* Sidebar (shadcn sidebar) */
+  --sidebar: #f7f7fb;
+  --sidebar-foreground: #1a1a24;
+  --sidebar-primary: #6254e8;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #eeecfd;
+  --sidebar-accent-foreground: #3b30b5;
+  --sidebar-border: #e6e6ee;
+  --sidebar-ring: #6254e8;
+
+  /* Shape */
+  --radius: 0.5rem; /* 8px base: inputs and buttons 6px, menus 8px, cards and dialogs 12px */
+
+  /* Typography (set by next/font; these are the fallbacks) */
+  --font-sans:
+    "Inter", ui-sans-serif, system-ui, "Noto Sans", "Noto Sans Devanagari",
+    sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Collaborators: avatars and remote cursors. Same in both themes.
+     Text on these is always #1a1a24. Separate from brand and status colors. */
+  --collab-1: #f59e0b;
+  --collab-2: #34d399;
+  --collab-3: #60a5fa;
+  --collab-4: #f472b6;
+  --collab-5: #a78bfa;
+  --collab-6: #fb923c;
+  --collab-7: #2dd4bf;
+  --collab-8: #f87171;
+  --collab-text: #1a1a24;
+}
+
+.dark {
+  --background: #14141c;
+  --foreground: #ececf3;
+  --card: #1b1b26;
+  --card-foreground: #ececf3;
+  --popover: #20202d;
+  --popover-foreground: #ececf3;
+
+  --primary: #8a7ff5;
+  --primary-foreground: #14141c; /* dark text on the lighter dark-mode primary keeps contrast */
+  --accent: #25224a;
+  --accent-foreground: #c7c2ff;
+  --ring: #8a7ff5;
+
+  --secondary: #222230;
+  --secondary-foreground: #ececf3;
+  --muted: #222230;
+  --muted-foreground: #9a9aae;
+  --border: #2a2a38;
+  --input: #2a2a38;
+
+  --destructive: #f87171;
+  --destructive-foreground: #14141c;
+  --success: #4ade80;
+  --success-bg: #12281b;
+  --warning: #fbbf24;
+  --warning-bg: #2b2210;
+  --error-text: #f87171;
+  --error-bg: #3a1616;
+
+  --sidebar: #14141c;
+  --sidebar-foreground: #ececf3;
+  --sidebar-primary: #8a7ff5;
+  --sidebar-primary-foreground: #14141c;
+  --sidebar-accent: #25224a;
+  --sidebar-accent-foreground: #c7c2ff;
+  --sidebar-border: #2a2a38;
+  --sidebar-ring: #8a7ff5;
+}
+
+/* Reduced motion: keep state changes, drop movement. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
