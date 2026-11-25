@@ -59,7 +59,9 @@
   --radius: 0.5rem; /* 8px base: inputs and buttons 6px, menus 8px, cards and dialogs 12px */
 
   /* Typography (set by next/font; these are the fallbacks) */
-  --font-sans: "Inter", ui-sans-serif, system-ui, "Noto Sans", "Noto Sans Devanagari", sans-serif;
+  --font-sans:
+    "Inter", ui-sans-serif, system-ui, "Noto Sans", "Noto Sans Devanagari",
+    sans-serif;
   --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
   /* Collaborators: avatars and remote cursors. Same in both themes.
