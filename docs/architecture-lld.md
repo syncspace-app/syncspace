@@ -1,6 +1,6 @@
 # SyncSpace: Low-Level Design
 
-> **Status:** v 3· **Updated:** 2026-11-25 · **Audience:** the two developers building the MVP, and reviewers who want depth.
+> **Status:** v3 · **Updated:** 2026-11-25 · **Audience:** the two developers building the MVP, and reviewers who want depth.
 > **Start with:** [High-level architecture](architecture-hld.md). This document assumes you have read it.
 
 ## Conventions

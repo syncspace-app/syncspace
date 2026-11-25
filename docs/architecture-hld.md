@@ -1,6 +1,6 @@
 # SyncSpace: High-Level Architecture
 
-> **Status:** v3.1 · **Updated:** 2026-11-25 · **Decisions D1, D2 and D4 are resolved** (section 17) · **Audience:** anyone who wants to understand SyncSpace in about 15 minutes (new contributors, reviewers).
+> **Status:** v3.1 · **Updated:** 2026-11-25 · **Decisions D1, D2 and D4 are resolved** (section 17) · **Audience:** anyone who wants to understand SyncSpace in about 15 minutes (new contributors, reviewers, interviewers).
 > **Next:** [Low-level design](architecture-lld.md) for modules, data model, protocols and tests.
 > **Requirements source:** [project-brief.md](project-brief.md)
 
