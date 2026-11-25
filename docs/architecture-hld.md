@@ -1,15 +1,15 @@
 # SyncSpace: High-Level Architecture
 
-> **Status:** v2 · **Updated:** 2026-11-22
-> **Audience:** anyone who wants to understand SyncSpace in 10 minutes (interviewers, new contributors).
-> **Next:** [Low-level design](./architecture-lld.md) for modules, data model, protocols and tests.
-> **Requirements source:** [project-brief.md](./project-brief.md)
+> **Status:** v3.1 · **Updated:** 2026-11-25 · **Decisions D1, D2 and D4 are resolved** (section 17) · **Audience:** anyone who wants to understand SyncSpace in about 15 minutes (new contributors, reviewers).
+> **Next:** [Low-level design](architecture-lld.md) for modules, data model, protocols and tests.
+> **Requirements source:** [project-brief.md](project-brief.md)
 
-**Reading notes**
+## Reading notes
 
 - Diagrams are Mermaid, so GitHub renders them in the repo.
-- **⚠ Verify** marks anything that depends on a third-party library or a free-tier limit. Confirm it against current official docs before relying on it.
-- Free-tier limits were last checked in November 2026 and change often. Re-check before you deploy.
+- **⚠ Verify** marks anything that depends on a third-party library or a free-tier limit. Confirm it against current official docs before relying on it. Never guess a package API.
+- Free-tier facts were last checked in November 2026 and change often. Re-check before you deploy.
+- **Open decisions** that need an owner's approval are collected in [section 17](#17-open-decisions-needing-approval).
 
 ---
 
@@ -23,42 +23,40 @@ The app makes three promises:
 2. **Collaborate naturally:** many people edit one document with no overwritten work.
 3. **Know the truth:** the screen always says whether your work is on this device, on its way, or safely stored on the server.
 
-> A connected WebSocket is never proof that work is saved. "Saved" appears only after the database confirms it.
+> A connected WebSocket is **never** proof that work is saved. "Saved" appears only after the database confirms it.
 
----
-
-## 2. Scope: one-week MVP versus future
+## 2. Scope: MVP versus future
 
 We build a small number of features reliably, not many half-working ones.
 
-| Area          | In the one-week MVP                                                          | Future enhancements                                     |
-| ------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------- |
-| Accounts      | Email and password sign-up, sign-in, sign-out, session, profile              | OAuth, password reset by email, email verification, MFA |
-| Documents     | Create, list (owned and shared), search by title, rename, delete             | Folders, templates, import and export                   |
-| Editor        | Headings, bold, italic, underline, strike, lists, quote, code, link, divider | Tables, images, task lists, slash commands              |
-| Collaboration | Live editing, presence, cursors, selections                                  | Comments, mentions, notifications                       |
-| Offline       | Edit offline in an open tab, local persistence, auto-reconnect and merge     | Reopen a closed tab offline (app-shell caching)         |
-| Status        | Eight explicit sync states driven by a durable-save acknowledgement          | Per-change counts, history of sync events               |
-| Sharing       | Owner, Editor and Viewer roles, **member-only invite links**                 | Email invitations, public links, teams                  |
-| Persistence   | Update log in Postgres, restart recovery, snapshots if time allows           | Version history and restore, compaction worker          |
-| UI            | Responsive (320 px to desktop), light and dark theme, English                | More languages, accent themes                           |
-| Ops           | Free deploys, CI, health checks, README demo video                           | Metrics, tracing, alerts, backups automation            |
+| Area             | In the MVP                                                                                                                | Future enhancements                                                    |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Accounts         | Email and password sign-up, sign-in, sign-out, persistent session, profile. Accounts are active immediately               | Email verification, password reset by email, OAuth, MFA                |
+| Documents        | Create, list (owned and shared), search by title, rename, delete                                                          | Folders, templates, import and export                                  |
+| Editor           | Headings, bold, italic, underline, strike, lists, quote, code, link, divider                                              | Tables, images, task lists, slash commands                             |
+| Collaboration    | Live editing, presence, cursors, selections                                                                               | Comments, mentions, notifications                                      |
+| Offline          | Keep editing in an **open tab**, local persistence, auto-reconnect and merge (decision D1)                                | Reopen a closed tab or refresh while offline (needs app-shell caching) |
+| Sync status      | Eight explicit states driven by a durable-save acknowledgement                                                            | Per-change counts, sync history                                        |
+| Sharing          | Owner, Editor, Viewer roles; invite links                                                                                 | Public links, teams                                                    |
+| Email (optional) | Behind `EMAIL_ENABLED`: **invite links only**, sent through an **HTTPS email API** (decision D4). Nothing else is emailed | Email verification, password reset, notification and digest emails     |
+| Persistence      | Update log in Postgres, restart recovery, snapshots if time allows                                                        | Version history and restore, compaction worker                         |
+| UI               | Responsive (320 px to desktop), light and dark theme, English                                                             | More languages, accent themes                                          |
+| Ops              | Free deploys, CI, health checks, README demo video                                                                        | Metrics, tracing, alerts, backup automation                            |
 
----
+The app must be **fully usable with email switched off**. Email is a convenience, never a dependency.
 
 ## 3. Constraints that shaped the design
 
-| Constraint                                    | What we did about it                                                                                                 |
-| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| **Zero budget**                               | Only free tiers: Vercel, Render, Neon, GitHub. No Redis, no queues, no email provider, no custom domain.             |
-| **One week, two developers**                  | One repo, one backend process, shared libraries only where needed. Everything else is a future enhancement.          |
-| **Free hosts sleep when idle**                | Design for cold starts: a wake-up request on page load and a status badge that says "Connecting" instead of failing. |
-| **Public GitHub repo**                        | No secrets in code, least-privilege CI, demo accounts hold no real data.                                             |
-| **Frontend and backend on different domains** | Proxy REST and auth through the frontend origin, and connect the WebSocket directly with a short-lived ticket.       |
-| **Must work on phones**                       | Mobile-first layout, 44 px touch targets, a docked editor toolbar.                                                   |
-| **Interviewers may not run it**               | A README video and an easy demo path (see §13).                                                                      |
-
----
+| Constraint                                            | What we did about it                                                                                             |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Zero budget                                           | Free tiers only: Vercel, Render, Neon, GitHub, and a free HTTPS email API. No Redis, no queues, no custom domain |
+| 14 days, two developers                               | One repo, one backend process, shared libraries only where needed. Everything else is a future enhancement       |
+| Free hosts sleep when idle                            | Wake the API on page load, and show **Connecting** instead of failing                                            |
+| Render free blocks outbound SMTP (ports 25, 465, 587) | Send email through an HTTPS API (port 443), never SMTP                                                           |
+| Frontend and backend on different domains             | Proxy REST and sign-in through the frontend origin; connect the WebSocket directly with a short-lived ticket     |
+| Public GitHub repo                                    | No secrets in code, least-privilege CI, demo accounts hold no real data                                          |
+| Must work on phones                                   | Mobile-first layout, 44 px touch targets, a docked editor toolbar                                                |
+| Reviewers may not run it                              | README video and an easy demo path (section 13)                                                                  |
 
 ## 4. System context
 
@@ -66,19 +64,19 @@ Who and what SyncSpace talks to.
 
 ```mermaid
 flowchart LR
-  U["People<br/>desktop, tablet, phone"]
-  W["Web app<br/>Next.js on Vercel"]
-  A["API and collaboration server<br/>NestJS + Hocuspocus on Render"]
-  D[("Database<br/>Neon PostgreSQL")]
+  P[People - desktop, tablet, phone]
+  W[Web app - Next.js on Vercel]
+  A[API and collaboration server - NestJS and Hocuspocus on Render]
+  D[(Neon PostgreSQL)]
+  E[Email provider - HTTPS API, optional]
 
-  U -->|"opens pages"| W
-  U -->|"REST and sign-in<br/>via /api on the same origin"| W
-  W -->|"forwards /api/*"| A
-  U <-->|"live editing<br/>WebSocket /collaboration"| A
-  A -->|"SQL over SSL"| D
+  P -->|HTTPS pages and /api calls| W
+  W -->|rewrite /api to the API| A
+  P -->|WebSocket over TLS with ticket| A
+  A -->|SQL over SSL| D
+  A -->|HTTPS email API| E
+  E -.->|email with invite or verification link| P
 ```
-
----
 
 ## 5. Architecture at a glance
 
@@ -86,348 +84,385 @@ One frontend, one backend process, one database. Every document is a CRDT (Yjs),
 
 ```mermaid
 flowchart TB
-  subgraph BROWSER["Browser"]
-    UI["React UI<br/>shadcn/ui + Tailwind"]
-    ED["Tiptap editor"]
-    YD["Y.Doc<br/>the document"]
-    IDB[("IndexedDB<br/>offline copy")]
-    PRV["Hocuspocus provider"]
-    ST["Status engine<br/>Saved, Syncing, Offline..."]
+  subgraph Browser
+    UI[React UI - shadcn and Tailwind]
+    ED[Tiptap editor]
+    YD[Y.Doc - the document]
+    IDB[(IndexedDB - offline copy and pending marker)]
+    PROV[Hocuspocus provider]
+    ST[Status engine - Saved, Syncing, Offline]
     UI --> ED --> YD
     YD <--> IDB
-    YD <--> PRV
-    PRV --> ST
+    YD <--> PROV
+    PROV --> ST
     IDB --> ST
   end
 
-  subgraph VERCEL["Vercel"]
-    NX["Next.js pages<br/>no business logic"]
-    RW["Rewrite<br/>/api/* to the API"]
+  subgraph Vercel
+    NX[Next.js pages - no business logic]
+    RW[Rewrite /api to the API]
   end
 
-  subgraph RENDER["Render: one NestJS process"]
-    AU["Better Auth<br/>sessions"]
-    RS["REST modules<br/>documents, members, invites"]
-    PM["PermissionsService<br/>one rulebook"]
-    HC["Hocuspocus<br/>/collaboration"]
-    PA["Persistence and ack"]
-    RS --> PM
-    HC --> PM
-    HC --> PA
+  subgraph Render[Render - one NestJS process]
+    AUTH[Better Auth - sessions]
+    REST[REST modules - documents, members, invitations]
+    PERM[PermissionsService - one rulebook]
+    MAIL[EmailService - optional]
+    HP[Hocuspocus - /collaboration]
+    PA[Persistence and ack]
+    REST --> PERM
+    HP --> PERM
+    REST --> MAIL
+    AUTH --> MAIL
+    HP --> PA
   end
 
-  DB[("Neon PostgreSQL")]
+  DB[(Neon PostgreSQL - durable)]
+  EM[Email provider - HTTPS API]
 
-  UI --> NX
-  UI -->|"/api/*"| RW --> AU
-  RW --> RS
-  PRV <-->|"WebSocket + ticket"| HC
-  AU --> DB
-  RS --> DB
+  UI -->|pages| NX
+  UI -->|REST and sign-in| RW
+  RW --> AUTH
+  RW --> REST
+  PROV -->|WebSocket and ticket| HP
+  AUTH --> DB
+  REST --> DB
   PA --> DB
+  MAIL -->|HTTPS| EM
 ```
 
 **Who owns what**
 
-| Component                | Owns                                             | Does not own                                  |
-| ------------------------ | ------------------------------------------------ | --------------------------------------------- |
-| Next.js                  | Pages, routing, theme, client state              | Authorization, durable data                   |
-| Better Auth (in the API) | Users, passwords, sessions                       | Document permissions                          |
-| NestJS REST              | Business rules, authorization, document metadata | Live document content                         |
-| Hocuspocus               | Live Yjs sync, presence, connections             | Business rules (it asks `PermissionsService`) |
-| PostgreSQL               | The durable truth                                | Cursors and presence                          |
-| IndexedDB                | The offline copy and pending-work marker         | Anything proving server persistence           |
-
----
+| Component                    | Owns                                                          | Does not own                                           |
+| ---------------------------- | ------------------------------------------------------------- | ------------------------------------------------------ |
+| Next.js                      | Pages, routing, theme, client state                           | Authorization, durable data                            |
+| Better Auth (inside the API) | Users, passwords, sessions                                    | Document permissions                                   |
+| NestJS REST                  | Business rules, authorization, document metadata, invitations | Live document content                                  |
+| PermissionsService           | **The single rulebook** for who may do what                   | Identity (that comes from the session or ticket)       |
+| Hocuspocus                   | Live Yjs sync, presence, connections                          | Business rules (it asks PermissionsService)            |
+| EmailService                 | Turning a message into one HTTPS call                         | Deciding who gets email; it never blocks a user action |
+| PostgreSQL                   | The durable truth                                             | Cursors and presence                                   |
+| IndexedDB                    | The offline copy and the pending-work marker                  | Anything that proves server persistence                |
 
 ## 6. How requests travel
 
-Two different paths, chosen because Vercel cannot hold long-lived sockets and the two hosts live on different domains.
+Two different paths, chosen because Vercel cannot proxy long-lived sockets and the two hosts live on different domains.
 
 ```mermaid
 flowchart LR
-  B["Browser"]
-  subgraph V["Vercel origin: app.vercel.app"]
-    P["Pages"]
-    R["Rewrite /api/*"]
+  B[Browser]
+  subgraph V[Vercel origin - app.vercel.app]
+    PG[Pages]
+    RW[Rewrite /api]
   end
-  subgraph RN["Render origin: api.onrender.com"]
-    API["REST + Better Auth"]
-    WS["Hocuspocus /collaboration"]
+  subgraph R[Render origin - api.onrender.com]
+    API[REST and Better Auth]
+    WS[Hocuspocus /collaboration]
   end
-
-  B -->|"1. page loads"| P
-  B -->|"2. REST and sign-in<br/>cookie stays first-party"| R --> API
-  B -->|"3. WebSocket direct<br/>short-lived ticket, no cookie"| WS
+  B -->|1 page loads| PG
+  B -->|2 REST and sign-in, first-party cookie| RW
+  RW --> API
+  B -->|3 WebSocket direct, short-lived ticket, no cookie| WS
 ```
 
 1. **Pages** come from Vercel.
-2. **REST and sign-in** look like same-origin calls, because Vercel forwards `/api/*` to Render. The session cookie is first-party, so Safari and Brave do not block it, and no CORS setup is needed.
-3. **The WebSocket** connects straight to Render. Before connecting, the browser asks `POST /api/collaboration/tickets` (through the proxy, with its session) for a 60-second ticket and presents that. The server still reads the user's role from the database.
+2. **REST and sign-in** look like same-origin calls, because Vercel forwards `/api/*` to Render. The session cookie is first-party, so browsers that block third-party cookies still work, and no CORS setup is needed.
+3. **The WebSocket** connects straight to Render. Before connecting, the browser asks `POST /api/collaboration/tickets` (through the proxy, with its session) for a 60-second single-use ticket and presents it in the first message. The server still reads the user's role from the database.
 
 **Free-tier behavior to design around** (⚠ Verify the current limits before you deploy)
 
-| Host                    | Behavior                                                                                                                                                               |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Render free web service | Sleeps after about 15 minutes with no inbound traffic, and WebSocket messages count as traffic. Waking takes about a minute. Redeploys and restarts close all sockets. |
-| Neon free               | Compute sleeps when idle and wakes on the next query.                                                                                                                  |
-| Vercel Hobby            | Static and serverless hosting; no long-lived sockets.                                                                                                                  |
+| Host                    | Behavior                                                                                                                                                                                                                                                                                                                                                                       |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Render free web service | Spins down after 15 minutes without inbound traffic. WebSocket messages count as traffic. Waking takes about a minute. 750 free instance hours per workspace per month, shared by all free services. Ephemeral filesystem. Free services cannot receive private-network traffic. **Outbound SMTP ports 25, 465 and 587 are blocked.** Restarts and redeploys close all sockets |
+| Neon free               | Compute sleeps when idle and wakes on the next query                                                                                                                                                                                                                                                                                                                           |
+| Vercel Hobby            | Static and serverless hosting; no long-lived sockets                                                                                                                                                                                                                                                                                                                           |
 
-Consequences: ping `/api/health` when the app loads to wake Render early, show **Connecting** (not an error) during a cold start, flush pending stores on shutdown, and warm everything a minute before a demo.
-
----
+Consequences: ping `/api/health` when the app loads so Render wakes early, show **Connecting** (not an error) during a cold start, flush pending stores on shutdown, and warm everything a minute before a demo.
 
 ## 7. The core idea: three layers of "saved"
 
 This is what makes SyncSpace different from a basic CRUD editor.
 
 ```mermaid
-flowchart TB
-  T["You type"]
-  L1["Layer 1: this device<br/>IndexedDB write<br/>Status: Locally saved"]
-  L2["Layer 2: server memory<br/>live room receives the update<br/>Status: Syncing"]
-  L3["Layer 3: Postgres<br/>durable commit<br/>Status: Saved"]
-  ACK["Server replies 'flushed'<br/>only after the commit"]
-
-  T --> L1 --> L2 --> L3 --> ACK
-  ACK -.->|"the only thing that turns the badge to Saved"| T
+flowchart LR
+  T[You type] --> L1[Layer 1 - this device. IndexedDB write. Status: Locally saved]
+  L1 --> L2[Layer 2 - server memory. The live room received it. Status: Syncing]
+  L2 --> L3[Layer 3 - Postgres. Durable commit. Status: Saved]
+  L3 -.->|only after the commit| ACK[Server replies flushed]
 ```
 
-- Each layer proves something different. Only the third proves the work survives a server restart.
-- The server's acknowledgement is a message the client sends and matches (`flush` and `flushed`), not a side effect of the socket being open.
-- Details are in [LLD §6](./architecture-lld.md#6-persistence-and-the-save-acknowledgement).
-
----
+Each layer proves something different. Only the third proves the work survives a server restart. The acknowledgement is a message the client sends and then matches (`flush` and `flushed`), not a side effect of the socket being open. Details are in [LLD section 7](architecture-lld.md#7-persistence-and-the-save-acknowledgement).
 
 ## 8. Key user journeys
 
 ```mermaid
-flowchart TD
-  L["Landing page"] --> REG["Register"]
-  L --> LOG["Sign in"]
-  REG --> DASH
-  LOG --> DASH["Dashboard<br/>owned and shared documents"]
-  DASH --> NEW["New document"]
-  NEW --> ED
-  DASH --> ED["Editor<br/>live cursors, sync badge"]
-  DASH --> SET["Settings<br/>profile and theme"]
-
-  subgraph SHARE["Sharing"]
-    ED --> SH["Share dialog<br/>pick role, copy invite link"]
-    SH --> LINK["Recipient opens invite link"]
-    LINK --> AUTH["Signs in or registers"]
-    AUTH --> JOIN["Becomes Editor or Viewer"]
-    JOIN --> ED
-  end
-
-  subgraph OFFLINE["Offline loop"]
-    ED -->|"connection lost"| OFF["Keep typing<br/>Locally saved"]
-    OFF -->|"connection back"| SYNC["Syncing"]
-    SYNC --> SAVED["Saved"]
-    SAVED --> ED
-  end
+flowchart TB
+  A[Landing page] --> B[Register or sign in]
+  B --> C[Dashboard - owned and shared documents]
+  C --> S[Settings - profile and theme]
+  C --> D[New document]
+  D --> E[Editor - live cursors, sync badge]
+  E --> F[Share dialog - pick role, copy invite link, optionally email it]
+  F --> G[Recipient opens the invite link]
+  G --> H[Signs in or registers]
+  H --> I[Becomes Editor or Viewer]
+  E -->|connection lost| J[Keep typing - Locally saved]
+  J -->|connection back| K[Syncing]
+  K --> L[Saved]
 ```
 
-All screens are designed in the UI design canvas. Export screenshots into `docs/design/` so the repo carries them.
+**Where email fits**
+
+| Flow                        | Trigger                 | Needs email?   | With email off                                              |
+| --------------------------- | ----------------------- | -------------- | ----------------------------------------------------------- |
+| Invite to a document        | Owner clicks Share      | No             | Owner copies the link and sends it themselves               |
+| Optional email of that link | Owner enters an address | Yes            | The option is hidden                                        |
+| Email verification          | Sign-up                 | Not in the MVP | Accounts are active immediately                             |
+| Password reset              | "Forgot password"       | Not in the MVP | No forgot-password flow; demo accounts have fixed passwords |
 
 ---
 
 ## 9. Technology choices and why
 
+| Area                    | Choice                                                                            | Why                                                                   | Alternatives considered                                                 | Trade-off                                                                          |
+| ----------------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Frontend                | Next.js (App Router), React, TypeScript, Tailwind, shadcn/ui                      | Landing page, routing, layouts, free Vercel deploys                   | Vite SPA (simpler for a client-only editor)                             | App Router needs care for a service worker later. See D3                           |
+| Server state / UI state | TanStack Query / Zustand                                                          | One owner per kind of state                                           | Redux, SWR                                                              | Two small libraries                                                                |
+| Editor                  | Tiptap                                                                            | First-class Yjs collaboration and cursor extensions                   | Lexical, Slate, raw ProseMirror, BlockNote                              | Some collaboration features are separate extensions                                |
+| CRDT                    | Yjs                                                                               | Largest ecosystem; Tiptap and Hocuspocus integrate directly           | Automerge, Loro                                                         | History is not first-class                                                         |
+| Local storage           | y-indexeddb                                                                       | Maintained, per-document                                              | Hand-rolled IndexedDB                                                   | Browser may evict unused storage                                                   |
+| Collaboration server    | Hocuspocus inside NestJS                                                          | Auth, load, store and stateless-message hooks                         | Custom `ws` with y-protocols, y-websocket                               | Its store hook is debounced, so we build our own flush-and-confirm                 |
+| Backend                 | NestJS 12 (ESM)                                                                   | Modules and guards map onto one permission rulebook; Swagger built in | Express, Fastify                                                        | More boilerplate; ESM and test-metadata quirks                                     |
+| Auth                    | Better Auth inside `apps/api`                                                     | One revocable cookie-session system                                   | Passport and JWT, Auth.js                                               | Needs an early integration spike with Nest                                         |
+| ORM                     | Prisma                                                                            | Migrations and type safety                                            | Drizzle, Kysely                                                         | Verify the Neon `directUrl` setup                                                  |
+| Database                | Neon PostgreSQL                                                                   | Plain Postgres, branch per developer, no Docker                       | Supabase, Render Postgres                                               | Cold starts; free-tier limits; no backups to rely on                               |
+| Email                   | Brevo HTTP API behind `EmailService` (optional)                                   | Works over HTTPS on free hosting                                      | Resend (needs a verified domain), Mailjet, SendGrid (free tier expires) | Daily caps, branding in the footer, deliverability. Provider confirmed by spike 10 |
+| Hosting                 | Vercel (web), Render (API)                                                        | Free, WebSocket-capable API host                                      | Railway, Fly.io, Cloudflare Pages                                       | Free tiers sleep                                                                   |
+| Tests                   | Vitest, React Testing Library, Supertest, Playwright, WebSocket integration tests | One runner for web and API                                            | Jest                                                                    | Decorator-metadata config for Nest                                                 |
+| CI                      | GitHub Actions                                                                    | Lint, typecheck, build, test; separate Neon CI branch                 |                                                                         |                                                                                    |
+| Tooling                 | Yarn 4, Turborepo                                                                 | Shared tooling in a monorepo                                          | npm workspaces                                                          |                                                                                    |
+
+## 10. Design rationale (for reviewers and interviews)
+
+### 10.1 Why CRDT instead of OT
+
+| Criterion            | OT                                                 | CRDT (Yjs)                   | Verdict                                            |
+| -------------------- | -------------------------------------------------- | ---------------------------- | -------------------------------------------------- |
+| Ordering             | Needs a central server to serialize operations     | Any order, any peer          | CRDT                                               |
+| Long offline periods | Transform hundreds of operations against thousands | Merge by state vector, cheap | CRDT                                               |
+| Implementation cost  | Transform rules for every operation pair           | Mature library               | CRDT                                               |
+| Duplicate delivery   | Must be handled by versioning                      | Idempotent by design         | CRDT                                               |
+| Memory and history   | Compact operations                                 | Tombstones and metadata grow | OT, but acceptable at MVP size; snapshots mitigate |
+
+A well-known system-design walkthrough of Google Docs proposes OT for live sessions and a CRDT-like approach for offline. We reject that hybrid because it doubles the machinery. One CRDT handles both.
+
+**Worked example.** The document is `AC`. Alice inserts `B` after `A`; Bob concurrently inserts `D` after `A`. With OT, the server must shift one position against the other. With Yjs nothing is transformed: every inserted item has a unique id and records which item it follows. Concurrent items with the same predecessor are ordered by a deterministic rule on client id, identically on every replica. All replicas show the same text. Applying the same update twice does nothing, and updates may arrive in any order.
+
+### 10.2 Ideas taken from the Google Docs system-design video
+
+| Idea                                                | Decision                                                   |
+| --------------------------------------------------- | ---------------------------------------------------------- |
+| Optimistic local apply, never wait for the server   | Kept. Inherent to Yjs                                      |
+| Operation log plus periodic snapshots               | Kept: `DocumentUpdate` rows plus `DocumentSnapshot`        |
+| Presence is best-effort and temporary               | Kept: Yjs Awareness, never persisted                       |
+| Throttle cursor broadcasts                          | Kept as a tuning option                                    |
+| Jittered reconnect, watch connection churn          | Kept                                                       |
+| Convergence hash check                              | Kept as a **test technique** now, a metric later           |
+| Trace id per operation                              | Kept as structured logs with document id and connection id |
+| OT transform engine, hybrid OT plus CRDT            | **Not used**                                               |
+| Sticky sessions, Redis pub/sub, ZooKeeper ownership | Deferred. One instance means one room owner                |
+| Capacity numbers (millions of connections)          | Irrelevant at MVP scale                                    |
+
+### 10.3 Ideas taken from the reference repository (suitenumerique/docs)
+
+Based on the repository's published [architecture notes](https://raw.githubusercontent.com/suitenumerique/docs/main/documentation/architecture.md); the source code itself was not reviewed.
+
+| What the repo does                                                                                                | SyncSpace decision                                                                        |
+| ----------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Backend owns who may do what; a separate collaboration server owns document content                               | Same rule, in one process: Hocuspocus calls `PermissionsService` directly                 |
+| Collaboration server asks the backend about the user and their abilities on every WebSocket connection            | Adopted: `onAuthenticate` resolves the role from the database                             |
+| Backend can force connected clients to be re-checked when access changes                                          | Adopted: a permission event closes live sockets                                           |
+| API and WebSocket served from one hostname, so the session cookie reaches the collaboration server                | We reach the same effect with the Vercel rewrite plus a ticket, because we have no domain |
+| Updates go to a stream, a worker persists them; the docs admit the last seconds are at risk if the stream is lost | Deferred. We have the same window, so the flush-and-confirm contract makes it visible     |
+| Separate converter services, S3, OIDC, Celery, search, AI                                                         | Out of scope                                                                              |
+
+### 10.4 System design concepts and where they apply
+
+| Concept                       | Where in SyncSpace                                                                | Trade-off accepted                                            |
+| ----------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| Client-server                 | Browser holds a full replica; the server is authoritative for auth and durability | Clients are untrusted, so every action is re-checked          |
+| Modular monolith              | One NestJS deploy with module boundaries                                          | WebSocket and HTTP cannot scale independently yet             |
+| Event-driven (in-process)     | Permission-change events close sockets                                            | Lost on restart; the database is the truth                    |
+| CRDT and eventual consistency | Yjs on every replica                                                              | Metadata growth; short windows where users see different text |
+| Data durability               | Postgres commit, confirmed by `flushed`                                           | One extra round trip before "Saved", off the typing path      |
+| Idempotency                   | Duplicate Yjs updates and flush retries are harmless                              | Duplicate rows until compaction                               |
+| Fault tolerance               | Local copy survives server loss; client re-sends after restart                    | Single instance is a single point of failure                  |
+| Connection management         | One socket per client per open document; backoff reconnect                        | Memory per connection on a small host                         |
+| Indexing                      | `(documentId, seq)` is the hot index                                              | Negligible write cost                                         |
+| Snapshotting and compaction   | Merge updates into snapshots                                                      | Needs locking and tests                                       |
+| Caching                       | The in-memory room is the server cache; IndexedDB is the client cache             | Per-process only                                              |
+| Rate limiting                 | Auth, tickets, invites, email-sending endpoints                                   | In-memory counters per instance                               |
+| AuthN and AuthZ               | Better Auth sessions; one `PermissionsService` for REST and WebSocket             | Cross-origin complexity, solved by the rewrite                |
+| Observability                 | Structured logs, health checks, convergence tests                                 | Basic at MVP; metrics later                                   |
+
+## 11. Security at a glance
+
 ```mermaid
-flowchart LR
-  subgraph FE["Frontend"]
-    F1["Next.js 16<br/>App Router"]
-    F2["React + TypeScript"]
-    F3["Tailwind + shadcn/ui"]
-    F4["Tiptap editor"]
-    F5["TanStack Query<br/>Zustand"]
-    F6["next-themes"]
+flowchart TB
+  subgraph U[Untrusted - the user's device]
+    C[Browser code, IndexedDB, anything sent]
   end
-  subgraph REAL["Real-time"]
-    R1["Yjs (CRDT)"]
-    R2["Hocuspocus"]
-    R3["y-indexeddb"]
+  subgraph T[Trusted - our server]
+    I[1 Who are you? Session or ticket]
+    R[2 What may you do? Role from the database]
+    E[3 Enforce it. Read-only sockets, checked writes]
+    DB[(Database)]
   end
-  subgraph BE["Backend"]
-    B1["NestJS 12 (ESM)"]
-    B2["Better Auth"]
-    B3["Prisma"]
-  end
-  subgraph DATA["Data and hosting"]
-    D1["Neon PostgreSQL"]
-    D2["Vercel"]
-    D3["Render"]
-  end
-  subgraph TOOL["Tooling"]
-    T1["Yarn 4 + Turborepo"]
-    T2["Vitest, Playwright"]
-    T3["GitHub Actions"]
-  end
+  C --> I --> R --> E --> DB
 ```
 
-| Choice                             | Why                                                                                                                             | Trade-off                                                           |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| **Yjs (CRDT) over OT**             | Any order of edits merges, duplicates are harmless, and long offline periods are cheap. One mechanism handles live and offline. | Document metadata grows; compaction or snapshots handle it later.   |
-| **Hocuspocus**                     | Ready-made Yjs server with auth, load and store hooks                                                                           | Its store hook is debounced, so we build our own flush-and-confirm. |
-| **NestJS backend**                 | Modules and guards map onto one shared permissions rulebook; Swagger built in                                                   | More boilerplate; ESM and test-metadata quirks                      |
-| **Next.js frontend**               | Landing page, routing, layouts and free Vercel deploys. Vite would also work for the editor alone.                              | App Router needs care for a service worker later                    |
-| **Better Auth inside the API**     | One session system, cookie sessions you can revoke instantly                                                                    | Needs an early integration spike with Nest                          |
-| **Neon over Supabase**             | Plain Postgres with a branch per developer; we do not need Supabase's bundled auth or realtime                                  | Cold starts, free-tier limits                                       |
-| **No Redis, one backend instance** | In-memory rooms need one process; zero cost                                                                                     | A deploy briefly drops connections; scaling needs Redis later       |
-| **Modular monolith**               | Two developers, one deploy, instant revocation                                                                                  | Shared scaling; modules keep a clean split for later                |
+- **Never trust the client.** Identity comes from the session or ticket; the role comes from the database.
+- **Hiding a button is not authorization.** Every write path checks the role on the server.
+- **One rulebook.** REST and WebSocket both call `PermissionsService`, so they cannot disagree.
+- **Presence is ephemeral and untrusted.** Names and colors are resolved server-side or from the member list, never taken from awareness.
+- **Local data is isolated per account** and cleared on logout, with a warning if work is unsynced.
+- **Email is a side channel.** A bearer invite link in an email is a secret: short expiry, email-bound when emailed, revocable.
+- **Public-demo guardrails:** rate limits, size limits, Origin checks, content sanitizing ([LLD section 10](architecture-lld.md#10-security-checklist)).
 
----
-
-## 10. Security at a glance
-
-```mermaid
-flowchart LR
-  subgraph U["Untrusted: the user's device"]
-    B["Browser code,<br/>IndexedDB, anything sent"]
-  end
-  subgraph T["Trusted: our server"]
-    G1["1. Who are you?<br/>session or ticket"]
-    G2["2. What may you do?<br/>role from the database"]
-    G3["3. Enforce it<br/>read-only sockets, checked writes"]
-    DB[("Database")]
-  end
-  B --> G1 --> G2 --> G3 --> DB
-```
-
-1. **Never trust the client.** Identity comes from the session or ticket, and the role comes from the database.
-2. **Hiding a button is not authorization.** Every write path checks the role on the server.
-3. **One rulebook.** REST and WebSocket both call `PermissionsService`, so they cannot disagree.
-4. **Presence is ephemeral.** Cursors are never written to the database.
-5. **Local data is isolated** per account and cleared on logout (with a warning if work is unsynced).
-6. **Public-demo guardrails:** rate limits, size limits, Origin checks and content sanitizing ([LLD §9](./architecture-lld.md#9-security-checklist)).
-
----
-
-## 11. Responsive design and UX architecture
+## 12. Responsive design and UX architecture
 
 | Width          | Layout                                                                                |
 | -------------- | ------------------------------------------------------------------------------------- |
 | 320 to 639 px  | Bottom navigation, full-screen editor, docked scrolling toolbar, bottom-sheet dialogs |
-| 640 to 1023 px | Icon-rail or collapsible sidebar, condensed toolbar, centered dialogs                 |
+| 640 to 1023 px | Collapsible sidebar, condensed toolbar, centered dialogs                              |
 | 1024 px and up | Persistent sidebar, full toolbar, presence and sync status in the header              |
 
-- **Tokens, not hardcoded colors:** shadcn CSS variables with Tailwind. Light and dark themes through `next-themes` (Light, Dark, System).
-- **Type:** Inter for the interface and editor, Geist Mono for code. Editor text 16 px with generous line height, column capped near 720 px.
-- **Accessibility:** semantic HTML, keyboard navigation, visible focus, and sync status never shown by color alone (icon plus words, with an `aria-live` announcement).
-- **English only now, i18n-ready:** every user-visible string lives in one place, and the API sends stable error codes, not English sentences.
+- **Tokens, not hardcoded colors:** shadcn CSS variables with Tailwind; Light, Dark and System themes. Accent `#6254E8`.
+- **Type:** Inter for the interface and editor, Geist Mono for code. Editor text 16 px, column capped near 720 px.
+- **Accessibility:** semantic HTML, keyboard navigation, visible focus; sync status is never color alone (icon, words, and an `aria-live` announcement).
+- **i18n-ready:** every user-visible string lives in one module; the API sends stable error codes, not English sentences.
 
----
-
-## 12. One-week delivery plan
-
-Two developers. The scaffold, CI and hooks are already done ("Day 0"). Each day ends with something demonstrable. The plan is tight, so the cut list below protects the core.
-
-| Day   | Developer 1 (frontend)                                          | Developer 2 (backend)                                                                               | Done when                                                          |
-| ----- | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| **1** | Theme, tokens, app shell, auth pages                            | Neon dev branches, Prisma schema, Better Auth inside Nest (**spike**), `/api` prefix, health checks | Register, sign in and refresh work through the proxy locally       |
-| **2** | Dashboard, document list, create, rename, delete, search        | Document REST + `PermissionsService`, Swagger                                                       | Create and manage documents; no access to others' private ones     |
-| **3** | Tiptap editor, toolbar, Yjs provider, presence                  | Hocuspocus on the Nest server, ticket endpoint, `onAuthenticate`, load and store (**ack spike**)    | Two browsers edit one document live                                |
-| **4** | IndexedDB, pending marker, sync status engine, offline banner   | Flush handler, persistence queue, restart recovery                                                  | Offline edit, reconnect, then **Saved** only after the commit      |
-| **5** | Share dialog, invite page, role-aware editor (viewer read-only) | Members and invite-link endpoints, revocation closes sockets                                        | Owner, Editor and Viewer behave the same across REST and WebSocket |
-| **6** | Responsive pass, empty and error states, dark-mode fixes        | **Deploy the skeleton early if not done on Day 1**, rate limits, shutdown flush, CI tests           | Live URL works with two accounts                                   |
-| **7** | Playwright tests, demo polish, README video                     | Integration tests (restart, DB failure), docs                                                       | Demo-ready; tag the release                                        |
-
-**Rule:** deploy a skeleton (login plus a WebSocket round trip) on Day 1 or 2, not at the end. Cross-origin and cold-start problems cost an hour early and a day late.
-
-**If you fall behind, cut in this order**
-
-1. Snapshots and compaction (the update log alone is enough for a demo).
-2. Invite expiry options and use caps (keep one default link).
-3. Settings and profile polish.
-4. Tablet-specific layout tuning.
-5. App-shell caching (it is already a stretch goal).
-
-**Never cut:** persistence acknowledgement, permission checks on the WebSocket, the sync status badge, per-account local data isolation.
-
----
-
-## 13. Demo and deployment plan (zero budget)
+## 13. Environments, deployment and demo
 
 ```mermaid
 flowchart LR
-  DEV["Developers<br/>own Neon dev branches"] --> GH["GitHub<br/>pull requests, CI"]
-  GH -->|"merge to main"| VC["Vercel"]
-  GH -->|"merge to main"| RD["Render"]
-  GH -.->|"tests use the ci branch"| NCI[("Neon ci branch")]
-  RD --> NMAIN[("Neon main branch<br/>production")]
+  DEV[Developers - own Neon dev branches] --> GH[GitHub pull requests and CI]
+  GH -->|merge to main| VC[Vercel]
+  GH -->|merge to main| RD[Render]
+  GH -->|tests| CIB[(Neon ci branch)]
+  VC -->|rewrite /api| RD
+  RD --> PROD[(Neon main branch - production)]
+  RD -->|HTTPS| EMP[Email provider]
 ```
 
-- Deploys happen automatically on merge to `main`. Local work and CI never touch the production branch.
-- **For interviewers**, include in the README:
-  1. A 60-second video or GIF: two users editing, one going offline and editing, then reconnecting while the badge moves from Locally saved to Saved.
-  2. The live URL, plus a cold-start warning ("the first load can take up to a minute").
-  3. Open registration with any email (email verification is off), and two seeded demo accounts so one person can try two windows. The demo accounts hold no real data and have profile and password changes disabled.
-  4. A list of what is deliberately disabled (password reset, email invites).
-- Guest sessions without sign-up are a future enhancement.
+- Deploys happen on merge to `main`. Local work and CI never touch the production branch.
+- **Deploy a skeleton early** (login plus a WebSocket round trip), not at the end. Cross-origin and cold-start problems cost an hour early and a day late.
+- **Demo path for reviewers:** a 60-second video or GIF (two users editing, one goes offline, edits, reconnects; the badge moves from Locally saved to Saved); the live URL with a cold-start warning; two seeded demo accounts with no real data; and a list of what is deliberately disabled or out of scope: reopening a closed tab while offline, email verification and password reset.
 
----
+## 14. From MVP to production
 
-## 14. Design highlights to talk about in interviews
+Principle: add infrastructure only when a measured problem demands it.
 
-1. **Honest status.** "Saved" means committed to Postgres, proven by an acknowledgement the client matches. I built a flush-and-confirm protocol because the editor's store hook is debounced.
-2. **Why CRDT, not OT.** Offline-first needs merging any order of edits without a central transformer. Yjs also makes duplicates and replays harmless.
-3. **One permission rulebook** shared by REST and the WebSocket, with revocation that closes live connections immediately.
-4. **Solving cross-origin on a zero budget:** proxy REST through the frontend origin for first-party cookies, and use a short-lived ticket for the socket.
-5. **Failure-first thinking:** twelve failure scenarios (restart, database down, expired session, account switch) mapped to tests.
-6. **Status as a pure function.** The sync badge is derived from inputs by one function, so every state is unit-testable.
-7. **Honest limits.** The README states what is not guaranteed: free-tier cold starts, single instance, no encryption of local data.
+| Concern          | MVP (now)                          | Production (later)                                                             | Trigger                         |
+| ---------------- | ---------------------------------- | ------------------------------------------------------------------------------ | ------------------------------- |
+| Instances        | One NestJS process                 | Several collaboration instances                                                | CPU, memory, availability needs |
+| Room routing     | Not needed                         | Sticky routing by document id, or Redis-backed sync between instances          | Second instance                 |
+| Redis            | None                               | Pub/sub for cross-instance updates and awareness, shared rate limits           | Second instance                 |
+| Services         | Modular monolith                   | Collaboration extracted as its own service                                     | Independent scaling             |
+| Database         | Pooled Neon URL, small pool        | Connection pooler, read replicas for metadata                                  | Connection errors               |
+| Snapshots        | Threshold plus on-unload           | Background worker, scheduled sweep                                             | Slow document loads             |
+| Backpressure     | Rely on Hocuspocus and TCP         | Cap message size and rate; drop awareness first, never document updates        | Large pastes, abuse             |
+| Email            | HTTPS API, in-process, best effort | Queue with retries, bounce handling, own domain                                | Real users                      |
+| Failure recovery | Client resends from IndexedDB      | Multi-region database, backups, restore drills                                 | Real users                      |
+| Monitoring       | Structured logs, `/health`         | Metrics (connections, flush latency and failures, reconnects), tracing, alerts | Launch                          |
 
-Do not claim production scale, performance numbers or guarantees you have not measured.
+## 15. Delivery plan (14 days, two developers)
 
----
+Follows the project brief's roadmap. Each day ends with something demonstrable.
 
-## 15. Future enhancements
+| Days     | Frontend developer                           | Backend developer                                                                            | Done when                                                                   |
+| -------- | -------------------------------------------- | -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| 1 to 2   | Theme, app shell, auth pages, dashboard      | Neon branches, Prisma, Better Auth spike, `/api` prefix, document REST, `PermissionsService` | Register, sign in and refresh work through the proxy; documents are private |
+| 2 to 3   | Deploy skeleton                              | Deploy skeleton, health checks                                                               | Login and a WebSocket round trip work on the live hosts                     |
+| 4 to 5   | Tiptap editor, Yjs provider                  | Hocuspocus on the Nest server, ticket endpoint, `onAuthenticate`, load and store             | Two browsers edit one document live                                         |
+| 6 to 7   | Presence, cursors, status engine             | Flush handler, persistence queue                                                             | Integration checkpoint: two authenticated users collaborate                 |
+| 8 to 9   | IndexedDB, pending marker, offline banner    | Restart recovery                                                                             | Offline edit, reconnect, then Saved only after the commit                   |
+| 10       | Status polish                                | Durable persistence, duplicates, snapshots if time                                           | State survives a restart; never falsely reports persistence                 |
+| 11       | Share dialog, invite page, role-aware editor | Members and invite endpoints, revocation closes sockets; **optional email adapter**          | Owner, Editor, Viewer behave the same on REST and WebSocket                 |
+| 12       | Responsive pass, Playwright                  | Integration tests (restart, database failure)                                                | Core workflows pass repeatable tests                                        |
+| 13 to 14 | Demo polish, README video                    | Production deploy, env vars, docs                                                            | Deployed app works end to end with two accounts; release tagged             |
 
-| Theme         | Items                                                                      |
-| ------------- | -------------------------------------------------------------------------- |
-| Accounts      | OAuth, email verification, password reset by email, MFA                    |
-| Sharing       | Email invitations, public links, guest sessions, teams and workspaces      |
-| Collaboration | Comments, mentions, notifications, activity feed                           |
-| Editor        | Tables, images, task lists, slash commands, export to PDF or Markdown      |
-| History       | Version history and restore (snapshots are already designed to support it) |
-| Offline       | App-shell caching so a closed tab reopens offline                          |
-| Reliability   | Compaction worker, automated encrypted backups, metrics and alerts         |
-| Scale         | Separate collaboration service, Redis for multiple instances               |
-| Product       | i18n with more languages, mobile app, templates                            |
-| AI            | Summaries and Q&A that read only documents the user may access             |
-
----
+**If you fall behind, cut in this order:** the optional email adapter, snapshots and compaction, invite expiry options, settings polish, tablet layout tuning, app-shell caching.
+**Never cut:** the persistence acknowledgement, permission checks on the WebSocket, the sync status badge, per-account local data isolation.
 
 ## 16. Decision log
 
-| ID      | Decision                                                                                                      | Why                                                   |
-| ------- | ------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| ADR-001 | Yarn 4 + Turborepo monorepo, modular monolith                                                                 | Two developers, shared tooling, one deploy            |
-| ADR-002 | CRDT (Yjs), no OT                                                                                             | Simplest way to get live and offline editing          |
-| ADR-003 | Better Auth inside `apps/api`, cookie sessions                                                                | One revocable session system                          |
-| ADR-004 | Hocuspocus on the same NestJS server                                                                          | One free deployment, instant revocation               |
-| ADR-005 | Save acknowledgement by flush with nonce, epoch and state vector                                              | Honest "Saved" that survives restarts                 |
-| ADR-006 | One `PermissionsService` for REST and WebSocket                                                               | They can never drift apart                            |
-| ADR-007 | Vercel rewrite for REST and auth, direct WebSocket with a 60-second ticket                                    | Works on free hosting without a domain                |
-| ADR-008 | Local database names `syncspace:{userId}:{documentId}`, plus a pending marker in a metadata store             | No cross-account leakage, honest status after refresh |
-| ADR-009 | Member-only invite links (hashed tokens, URL fragment, multi-use, 7-day default)                              | No email provider needed, identity preserved          |
-| ADR-010 | Neon only, per-developer branches, no Docker                                                                  | Simplicity and zero cost                              |
-| ADR-011 | Document owner stored in `Document.ownerId` only                                                              | One source of truth                                   |
-| ADR-012 | Offline promise: edit in an open tab, survive reload, merge on reconnect. App-shell caching is a stretch goal | Keeps the week realistic                              |
-| ADR-013 | Single backend instance, no Redis                                                                             | In-memory rooms need one process                      |
-| ADR-014 | Sync status derived by a pure function from inputs                                                            | Testable, cannot reach impossible states              |
+| ID      | Decision                                                                                                                 | Why                                                                         | Status                  |
+| ------- | ------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------- | ----------------------- |
+| ADR-001 | Yarn 4 and Turborepo monorepo; modular monolith                                                                          | Two developers, shared tooling, one deploy                                  | Decided                 |
+| ADR-002 | CRDT (Yjs), no OT                                                                                                        | Simplest way to get live and offline editing                                | Decided                 |
+| ADR-003 | Better Auth inside `apps/api`, cookie sessions                                                                           | One revocable session system                                                | Decided                 |
+| ADR-004 | Hocuspocus on the same NestJS server; one Render service                                                                 | Fits the free hour budget, one cold start, instant revocation               | Decided                 |
+| ADR-005 | Save acknowledgement by flush with nonce, epoch and state vector                                                         | Honest "Saved" that survives restarts                                       | Decided, needs spike    |
+| ADR-006 | One `PermissionsService` for REST and WebSocket                                                                          | They can never drift apart                                                  | Decided                 |
+| ADR-007 | Vercel rewrite for REST and auth; direct WebSocket with a 60-second single-use ticket                                    | Works on free hosting without a domain                                      | Decided                 |
+| ADR-008 | Local database names `syncspace:{userId}:{documentId}` plus a pending marker                                             | No cross-account leakage; honest status after refresh                       | Decided                 |
+| ADR-009 | Invite links (hashed token, URL fragment, expiry, caps) are the primary sharing mechanism                                | No email dependency; identity preserved                                     | Decided                 |
+| ADR-010 | Neon only, per-developer branches, no Docker                                                                             | Simplicity and zero cost                                                    | Decided                 |
+| ADR-011 | Owner stored only in `Document.ownerId`                                                                                  | One source of truth                                                         | Decided                 |
+| ADR-012 | Single backend instance, no Redis                                                                                        | In-memory rooms need one process                                            | Decided                 |
+| ADR-013 | Sync status derived by one pure function                                                                                 | Testable; cannot reach impossible states                                    | Decided                 |
+| ADR-014 | Offline promise is editing in an open tab. Refreshing or reopening while offline is not supported in the MVP             | Keeps the schedule realistic; app-shell caching is a later stretch goal     | Decided 2026-11-25 (D1) |
+| ADR-015 | Email goes through an HTTPS API behind an `EmailService` interface; never SMTP                                           | Render free blocks SMTP; swapping providers touches one file                | Decided                 |
+| ADR-016 | Email is optional and best-effort behind `EMAIL_ENABLED`                                                                 | The app must work without it                                                | Decided                 |
+| ADR-017 | A removed user sees a dialog saying access was removed and unsynced edits are discarded; then their local copy is purged | Confidentiality over preserving unsynced work, with no surprise to the user | Decided 2026-11-25 (D2) |
+| ADR-018 | Email is used only to deliver invite links. No verification or password-reset emails in the MVP                          | Smallest email surface on a 300-a-day free quota; fewer abuse paths         | Decided 2026-11-25 (D4) |
 
----
+New decisions follow the ADR template in [docs/README.md](README.md).
 
-## 17. Assumptions and things to verify early
+## 17. Open decisions needing approval
 
-| #   | Item                                                                                                              | When                |
-| --- | ----------------------------------------------------------------------------------------------------------------- | ------------------- |
-| 1   | Better Auth works behind the Vercel rewrite (base URL, trusted origins, `Set-Cookie` passthrough) and inside Nest | Day 1 spike         |
-| 2   | Hocuspocus hooks, stateless messages, custom close codes and read-only connections in the pinned version          | Day 3 spike         |
-| 3   | Message order on one connection, including a delete followed immediately by a flush                               | Day 3 spike         |
-| 4   | Vercel's timeout for rewrites to a cold Render service                                                            | Day 1 deploy        |
-| 5   | Free-tier limits on Render, Neon and Vercel                                                                       | Before first deploy |
-| 6   | `y-indexeddb` update hooks and clearing, so the pending marker and logout purge work                              | Day 4               |
-| 7   | Safari may evict unused site storage; request persistent storage and warn if it is not granted                    | Day 4               |
+| #   | Decision                                                                  | Options                                                                                  | Recommendation                     |
+| --- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------- |
+| D3  | Next.js or Vite SPA                                                       |                                                                                          | Next.js (as in the brief)          |
+| D4b | Email provider (scope is already decided: invites only)                   | Brevo (verify one sender, no domain) or Resend (needs a verified domain)                 | Brevo, confirmed by spike 10       |
+| D5  | Editor task lists (your requirements list checklists, the brief does not) | In or out                                                                                | Out of the MVP                     |
+| D6  | Yjs garbage collection                                                    | On (smaller; explicit snapshots for history) or off                                      | On                                 |
+| D7  | An Editor is downgraded to Viewer while holding unsynced edits            | Same dialog and discard as removal, or keep the edits on the device without pushing them | Same policy as D2, for consistency |
+
+### Resolved decisions
+
+| #   | Decision                      | Outcome (2026-11-25)                                                                                                                                                                                                                                                                  |
+| --- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1  | Offline cold start            | **Open-tab offline only.** The MVP promises editing to continue when the connection drops, and local edits to survive a reload once online. Refreshing or reopening a closed tab while offline is not supported, and the README says so. App-shell caching is a post-MVP stretch goal |
+| D2  | Removed user's unsynced edits | **Dialog, then purge.** The user sees a message that they were removed and their unsynced edits cannot be synced and are discarded. After they dismiss it, the local copy of that document is deleted (LLD 6.4)                                                                       |
+| D4  | Email scope                   | **Invites only.** Email delivers invite links. No email verification and no password reset in the MVP                                                                                                                                                                                 |
+
+## 18. Assumptions and things to verify early
+
+| #   | Item                                                                                                                      | When                  |
+| --- | ------------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| 1   | Better Auth works behind the Vercel rewrite (base URL, trusted origins, `Set-Cookie` passthrough) and inside Nest         | Day 1 spike           |
+| 2   | Hocuspocus hooks, stateless messages, custom close codes and read-only connections in the pinned version                  | Day 4 spike           |
+| 3   | Message order on one connection, including a delete followed immediately by a flush                                       | Day 4 spike           |
+| 4   | Vercel's timeout for rewrites to a cold Render service (about a minute to wake)                                           | Day 2 deploy          |
+| 5   | Free-tier limits on Render, Neon, Vercel and the email provider                                                           | Before first deploy   |
+| 6   | y-indexeddb update hooks and clearing, for the pending marker and logout purge                                            | Day 8                 |
+| 7   | Safari may evict unused site storage; request persistent storage and warn if not granted                                  | Day 8                 |
+| 8   | Brevo accepts one email-verified sender with no domain (reported by a third-party library, not confirmed in Brevo's docs) | Before building email |
+| 9   | Better Auth works with email verification and password reset left disabled (no email callbacks needed)                    | Day 1 spike           |
+
+## 19. Future enhancements
+
+| Theme         | Items                                                                 |
+| ------------- | --------------------------------------------------------------------- |
+| Accounts      | Email verification, password reset by email, OAuth, MFA               |
+| Sharing       | Public links, guest sessions, teams and workspaces                    |
+| Collaboration | Comments, mentions, notifications, activity feed                      |
+| Editor        | Tables, images, task lists, slash commands, export to PDF or Markdown |
+| History       | Version history and restore (snapshots already support it)            |
+| Offline       | App-shell caching so a closed tab reopens offline                     |
+| Reliability   | Compaction worker, automated encrypted backups, metrics and alerts    |
+| Scale         | Separate collaboration service, Redis for multiple instances          |
+| Email         | Own domain, queue with retries, bounce handling                       |
+| AI            | Summaries and Q&A that read only documents the user may access        |
